@@ -222,6 +222,39 @@ func (s *BitStream) WriteInt32List(values []int32) {
 	}
 }
 
+// WriteUint32List writes an array of uint32 using bit-packed bit width.
+// Matches Tencent libpag EncodeStream::writeUint32List.
+func (s *BitStream) WriteUint32List(values []uint32) {
+	if len(values) == 0 {
+		s.WriteUBits(0, 5)
+		return
+	}
+	maxBits := uint8(1)
+	for _, v := range values {
+		bits := bitsForUint32(v)
+		if bits > maxBits {
+			maxBits = bits
+		}
+	}
+	s.WriteUBits(uint32(maxBits-1), 5)
+	for _, v := range values {
+		s.WriteUBits(v, maxBits)
+	}
+}
+
+func bitsForUint32(v uint32) uint8 {
+	if v == 0 {
+		return 1
+	}
+	bits := uint8(0)
+	for v > 0 {
+		bits++
+		v >>= 1
+	}
+	return bits
+}
+
+
 // WriteFloatList quantizes float32 values with given precision and writes them.
 // Matches Tencent libpag EncodeStream::writeFloatList.
 func (s *BitStream) WriteFloatList(values []float32, precision float32) {

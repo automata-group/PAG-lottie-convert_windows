@@ -95,6 +95,9 @@ func ConvertLottieDirectVector(anim *lottie.Animation, opts RenderOptions) ([]by
 
 	for i, lottieLayer := range anim.Layers {
 		layerID := uint32(100 + i)
+		if lottieLayer.Index > 0 {
+			layerID = uint32(lottieLayer.Index)
+		}
 		layerName := lottieLayer.Name
 		if layerName == "" {
 			layerName = fmt.Sprintf("layer_%d", i)
@@ -114,7 +117,12 @@ func ConvertLottieDirectVector(anim *lottie.Animation, opts RenderOptions) ([]by
 			duration = totalDuration
 		}
 
-		posX, posY, scaleX, scaleY := resolveLayerWorldTransform(&anim.Layers[i], indMap)
+		parentLayerID := uint32(0)
+		if lottieLayer.Parent > 0 {
+			parentLayerID = uint32(lottieLayer.Parent)
+		}
+
+		trData := ParseLottieTransform(lottieLayer.Transform, duration)
 
 		switch lottieLayer.Type {
 		case 1: // Solid Layer
@@ -134,7 +142,7 @@ func ConvertLottieDirectVector(anim *lottie.Animation, opts RenderOptions) ([]by
 
 		case 2: // Image Layer
 			if imgID, exists := assetIDToImageID[lottieLayer.RefID]; exists {
-				imgPayload, err := pag.BuildImageLayerWithTransform(layerID, imgID, layerName, startTime, duration, posX, posY, scaleX, scaleY)
+				imgPayload, err := pag.BuildImageLayerWithTransformData(layerID, imgID, layerName, startTime, duration, trData, parentLayerID)
 				if err == nil {
 					layers = append(layers, imgPayload)
 				}
@@ -142,7 +150,7 @@ func ConvertLottieDirectVector(anim *lottie.Animation, opts RenderOptions) ([]by
 
 		case 4: // Vector Shape Layer
 			shapeElements := parseLottieShapeElements(lottieLayer.Shapes)
-			shapePayload, err := pag.BuildShapeLayerWithTransform(layerID, layerName, startTime, duration, posX, posY, scaleX, scaleY, shapeElements)
+			shapePayload, err := pag.BuildShapeLayerWithTransformData(layerID, layerName, startTime, duration, trData, parentLayerID, shapeElements)
 			if err == nil {
 				layers = append(layers, shapePayload)
 			}
