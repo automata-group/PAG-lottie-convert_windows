@@ -91,6 +91,52 @@
 
 ---
 
+## 🤖 انسخ هذا البرومبت وأعطه للـ AI (للتنصيب والتشغيل التلقائي بالكامل)
+
+> **💡 ميزة استثنائية**: يمكنك ببساطة نسخ هذا الأمر (Prompt) بالكامل وإعطاؤه لأي مساعد ذكاء اصطناعي (مثل Cursor, Claude Code, ChatGPT, Antigravity, GitHub Copilot) وسيقوم المساعد بفحص النظام والمتطلبات، وبناء وتشغيل الأداة، وتحويل كافة ملفاتك خطوة بخطوة تلقائياً:
+
+```text
+أنت تعمل الآن كمهندس أنظمة برمجية خبير (Principal Systems Engineer). مهمتك هي فحص البيئة وتنصيب وبناء وتشغيل محول الرسوم المتحركة PAG الأصلي لنظام Windows بدقة 100% من المستودع التالي:
+https://github.com/automata-group/PAG-lottie-convert_windows.git
+
+اتبع هذه الخطوات الدقيقة والمتسلسلة بالترتيب الصارم:
+
+الخطوة 1: [فحص متطلبات البيئة ونظام التشغيل]
+- تأكد أن نظام التشغيل هو Windows.
+- افحص تثبيت لغة Go بإصدار 1.22 أو أحدث عبر الأمر: `go version`. في حال عدم وجودها، أرشد المستخدم لتثبيتها.
+- تأكد من وجود متصفح Microsoft Edge أو Google Chrome (المسار الافتراضي لـ Edge هو: `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`).
+- تأكد من وجود أداة Git عبر: `git --version`.
+
+الخطوة 2: [استنساخ المستودع وبناء الأداة التنفيذية]
+- استنسخ المستودع في مجلد العمل:
+  git clone https://github.com/automata-group/PAG-lottie-convert_windows.git
+- ادخل إلى مجلد المشروع:
+  cd PAG-lottie-convert_windows
+- قم ببناء الأداة التنفيذية المستقلة:
+  go build -v -o lottie2pag.exe .
+- تأكد من نجاح خروج البناء بإنشاء الملف التنفيذي `lottie2pag.exe` دون أي أخطاء.
+
+الخطوة 3: [تنفيذ مهام التحويل والضغط الفائق]
+- [تحويل ملف Lottie مفرد إلى PAG مع الضغط القياسي]:
+  .\lottie2pag.exe -i "input.json" -o "output.pag"
+- [تحويل مع تفعيل محرك الضغط الخارق Meta Zstandard (FSE/tANS)]:
+  .\lottie2pag.exe -i "input.json" -o "output.pag" -zstd
+  (سينتج كلا الملفين: output.pag المعياري و output.pag.zst المضغوط بنسبة 66.4%).
+- [تحويل مجلد كامل دفعياً (Batch) يحتوي على JSON أو GIF أو تسلسلات صور]:
+  .\lottie2pag.exe -batch "input/" -fps 30 -quality 0.80 -zstd
+- [التحكم المخصص بالجودة ومعدل الإطارات]:
+  .\lottie2pag.exe -i "input.json" -o "output.pag" -fps 30 -quality 0.80
+
+الخطوة 4: [فحص وتدقيق الملفات الناتجة]
+- قراءة وتفكيك هيكل الوسوم الثنائية ونسب الضغط:
+  .\lottie2pag.exe -inspect "output.pag"
+  .\lottie2pag.exe -inspect "output.pag.zst"
+
+تأكد من إظهار أحجام الملفات المحولة ونسب التوفير المحققة للمستخدم في نهاية كل عملية.
+```
+
+---
+
 ## 🛠️ متطلبات التشغيل والبناء (Prerequisites & Build)
 
 1. **بيئة نظام التشغيل**: Windows 10 أو Windows 11 (أو Windows Server).
@@ -100,7 +146,7 @@
 ### بناء الأداة التنفيذية من المصدر:
 ```powershell
 # استنساخ المستودع
-git clone https://github.com/USERNAME/PAG-lottie-convert_windows.git
+git clone https://github.com/automata-group/PAG-lottie-convert_windows.git
 cd PAG-lottie-convert_windows
 
 # بناء الأداة التنفيذية
@@ -223,6 +269,52 @@ Engineered in **Go** to completely eliminate macOS/Linux dependencies, equipped 
 | **Optimized (Q=0.80 - Default)** | 90 (30 FPS) | 728,998 | **711.9 KB** | **-58.7%** | Ultra Sharp (Sweet Spot) |
 | **Optimized (Q=0.70)** | 90 (30 FPS) | 667,144 | **651.5 KB** | **-62.2%** | High Quality |
 | **Meta Zstandard (`-zstd`)** | 90 (30 FPS) | **592,886** | **578.9 KB** | **-66.4%** | **0% Loss (Pure Lossless)** |
+
+---
+
+## 🤖 Copy This Prompt & Give It to Your AI (Automated Setup & Execution)
+
+> **💡 One-Click AI Agent Workflow**: Copy this complete prompt and pass it directly to any AI coding assistant (Cursor, Claude Code, ChatGPT, Antigravity, GitHub Copilot) to autonomously inspect your environment, clone the repo, compile the native Windows binary, and run conversions end-to-end:
+
+```text
+You are acting as a Principal Systems Engineer. Your objective is to inspect the host environment, build, and execute the native Windows Tencent PAG animation converter with 100% precision from this repository:
+https://github.com/automata-group/PAG-lottie-convert_windows.git
+
+Execute these sequential steps strictly in order:
+
+Step 1: [Host Environment Inspection]
+- Verify that the operating system is Windows.
+- Verify that Go 1.22+ is installed via `go version`. If missing, advise installation.
+- Verify Microsoft Edge or Google Chrome is available (default Edge path: `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`).
+- Verify Git is available via `git --version`.
+
+Step 2: [Repository Setup & Binary Build]
+- Clone the repository:
+  git clone https://github.com/automata-group/PAG-lottie-convert_windows.git
+- Navigate into the repository directory:
+  cd PAG-lottie-convert_windows
+- Build the standalone native Windows executable:
+  go build -v -o lottie2pag.exe .
+- Verify that `lottie2pag.exe` is successfully generated with exit code 0.
+
+Step 3: [Execution & Conversion Pipeline]
+- [Single Lottie JSON Conversion]:
+  .\lottie2pag.exe -i "input.json" -o "output.pag"
+- [Ultra-Compression with Meta Zstandard (FSE/tANS Level 19–22)]:
+  .\lottie2pag.exe -i "input.json" -o "output.pag" -zstd
+  (Produces both standard "output.pag" and ultra-compact "output.pag.zst" achieving 66.4% total size reduction).
+- [Native Directory Batch Conversion (JSON, GIF, Image Sequences)]:
+  .\lottie2pag.exe -batch "input/" -fps 30 -quality 0.80 -zstd
+- [Custom FPS and WebP Quality Calibration]:
+  .\lottie2pag.exe -i "input.json" -o "output.pag" -fps 30 -quality 0.80
+
+Step 4: [Inspection & Validation]
+- Inspect binary tag stream hierarchy and compression metrics:
+  .\lottie2pag.exe -inspect "output.pag"
+  .\lottie2pag.exe -inspect "output.pag.zst"
+
+Report the execution status, output file paths, and compression savings achieved upon completing each step.
+```
 
 ---
 
