@@ -1,10 +1,52 @@
 package lottie
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 )
+
+// ParseFile reads a Lottie file (.json or .lottie ZIP bundle) from disk and parses it.
+func ParseFile(filePath string) (*Animation, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Detect .lottie / ZIP archive format (PK\x03\x04 signature)
+	if len(data) > 4 && data[0] == 'P' && data[1] == 'K' && data[2] == 0x03 && data[3] == 0x04 {
+		zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+		if err != nil {
+			return nil, fmt.Errorf("failed opening .lottie zip bundle: %w", err)
+		}
+		var animFile *zip.File
+		for _, f := range zr.File {
+			if strings.HasSuffix(strings.ToLower(f.Name), ".json") && !strings.EqualFold(f.Name, "manifest.json") {
+				animFile = f
+				break
+			}
+		}
+		if animFile == nil {
+			return nil, fmt.Errorf("no animation JSON found inside .lottie bundle %s", filePath)
+		}
+		rc, err := animFile.Open()
+		if err != nil {
+			return nil, fmt.Errorf("failed opening inner animation JSON: %w", err)
+		}
+		defer rc.Close()
+		animData, err := io.ReadAll(rc)
+		if err != nil {
+			return nil, fmt.Errorf("failed reading inner animation JSON: %w", err)
+		}
+		return Parse(animData)
+	}
+
+	return Parse(data)
+}
 
 // Animation represents the root Lottie JSON schema.
 type Animation struct {
@@ -68,14 +110,6 @@ func Parse(data []byte) (*Animation, error) {
 	return &anim, nil
 }
 
-// ParseFile reads a Lottie file from disk and parses it.
-func ParseFile(filePath string) (*Animation, error) {
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, err
-	}
-	return Parse(data)
-}
 
 // DurationFrames returns the duration in frames (op - ip).
 func (a *Animation) DurationFrames() uint64 {

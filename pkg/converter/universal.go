@@ -39,7 +39,7 @@ func ConvertAuto(inputPath string, opts RenderOptions) ([]byte, MediaType, error
 	// 2. File -> dispatch by extension
 	ext := strings.ToLower(filepath.Ext(inputPath))
 	switch ext {
-	case ".json":
+	case ".json", ".lottie":
 		anim, err := lottie.ParseFile(inputPath)
 		if err != nil {
 			return nil, MediaTypeLottie, fmt.Errorf("failed parsing Lottie JSON: %w", err)
