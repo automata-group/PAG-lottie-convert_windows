@@ -113,6 +113,7 @@ func ConvertLottieToPAG(anim *lottie.Animation, opts RenderOptions) ([]byte, err
 			s := math.Sqrt(desiredPixels / origPixels)
 			if s < 0.40 {
 				s = 0.40
+				fmt.Printf("    [!] Target Budget Notice: %d KB is at/below physical quality threshold for this asset. Clamped scale to floor 0.40x.\n", opts.TargetKB)
 			} else if s > 0.60 && opts.Compact {
 				s = 0.60
 			} else if s > 1.0 {
@@ -510,11 +511,11 @@ func bakeLottieFrames(anim *lottie.Animation, totalFrames int, fps float32, expo
 	case <-doneCh:
 		// Succeeded!
 	case <-ctx.Done():
-		cmd.Process.Kill()
+		KillProcessTree(cmd)
 		return nil, nil, errors.New("timeout waiting for frame baking")
 	}
 
-	cmd.Process.Kill()
+	KillProcessTree(cmd)
 
 	mu.Lock()
 	defer mu.Unlock()

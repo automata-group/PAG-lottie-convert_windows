@@ -188,9 +188,7 @@ func VerifyPAGData(pagBytes []byte, staticDir string, edgePath string) (*Verific
 		return nil, fmt.Errorf("failed starting headless Edge at %s: %w", edgePath, err)
 	}
 	defer func() {
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
+		KillProcessTree(cmd)
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

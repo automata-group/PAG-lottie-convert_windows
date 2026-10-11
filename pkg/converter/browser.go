@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 )
 
 // FindBrowserExecutable discovers an available Chromium-based browser (Edge, Chrome, Chromium)
@@ -95,4 +97,24 @@ func ResolveStaticDir(customDir string) string {
 		}
 	}
 	return customDir
+}
+
+// KillProcessTree forcefully terminates a process and all its child/descendant processes.
+// On Windows, it invokes 'taskkill /T /F /PID <pid>' to eliminate all child Chromium renderer, GPU,
+// and crashpad processes, preventing any orphaned zombie processes from lingering in Task Manager.
+// On other operating systems, it terminates the process directly.
+func KillProcessTree(cmd *exec.Cmd) {
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+	pid := cmd.Process.Pid
+	if pid <= 0 {
+		return
+	}
+	if runtime.GOOS == "windows" {
+		killCmd := exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(pid))
+		_ = killCmd.Run()
+	} else {
+		_ = cmd.Process.Kill()
+	}
 }

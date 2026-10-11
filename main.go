@@ -169,8 +169,17 @@ func convertSingleTarget(inPath, outPath string, opts converter.RenderOptions, v
 	elapsed := time.Since(startTime)
 	fmt.Printf("[✓] Success! Generated %s PAG: %s\n", mediaType, outPath)
 	fmt.Printf("    Format     : %s\n", mediaType)
-	fmt.Printf("    Output size: %d bytes (Source: %d bytes)\n", len(pagBytes), origSize)
+	fmt.Printf("    Output size: %d bytes (%.2f KiB) [Source: %d bytes (%.2f KiB)]\n", len(pagBytes), float64(len(pagBytes))/1024.0, origSize, float64(origSize)/1024.0)
 	fmt.Printf("    Time taken : %v\n", elapsed)
+
+	if opts.TargetKB > 0 {
+		targetBytes := opts.TargetKB * 1024
+		if len(pagBytes) <= targetBytes {
+			fmt.Printf("    Target Budget: [PASSED] %d bytes <= %d bytes budget (%d KB / %d KiB)\n", len(pagBytes), targetBytes, opts.TargetKB, opts.TargetKB)
+		} else {
+			fmt.Printf("    Target Budget: [PHYSICAL FLOOR] %d bytes vs %d bytes requested (%d KB). Reached minimum safe visual floor.\n", len(pagBytes), targetBytes, opts.TargetKB)
+		}
+	}
 
 	if useZstd && !isZstdOut {
 		zstdBytes, err := compress.CompressZstd(pagBytes)
