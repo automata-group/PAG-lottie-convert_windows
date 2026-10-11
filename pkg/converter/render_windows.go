@@ -37,6 +37,7 @@ type RenderOptions struct {
 	MaxFrames  int     // Limit frame count (0 = all frames)
 	Lossless   bool    // True: retain full original FPS & lossless encoding
 	Vector     bool    // True: direct native vector export (zero full-canvas rasterization)
+	Hybrid     bool    // True: intelligent hybrid vector pipeline with per-layer selective raster fallback
 	Vectorize  bool    // True: vectorize raster frames/images into native Tencent PAG vector paths
 	EdgePath   string  // Custom path to Edge or Chrome (optional; auto-detected if empty)
 	StaticDir  string  // Optional custom directory containing static assets
@@ -53,8 +54,10 @@ func DefaultRenderOptions() RenderOptions {
 		Compact:    false,
 		MaxFrames:  0, // no limit
 		Lossless:   false,
-		EdgePath:   "", // dynamically discovered
-		StaticDir:  "", // embedded assets used by default
+		Vector:     false,
+		Hybrid:     true, // Intelligent hybrid pipeline active by default
+		EdgePath:   "",   // dynamically discovered
+		StaticDir:  "",   // embedded assets used by default
 		AppVersion: "lottie2pag-go",
 	}
 }

@@ -89,9 +89,35 @@ type Layer struct {
 	SolidColor  string          `json:"sc,omitempty"`    // For solid layers, hex e.g. "#ffffff"
 	SolidWidth  int32           `json:"sw,omitempty"`
 	SolidHeight int32           `json:"sh,omitempty"`
-	Shapes      json.RawMessage `json:"shapes,omitempty"`
-	Transform   json.RawMessage `json:"ks,omitempty"`
-	AutoOrient  int             `json:"ao,omitempty"`
+	Shapes          json.RawMessage `json:"shapes,omitempty"`
+	Transform       json.RawMessage `json:"ks,omitempty"`
+	AutoOrient      int             `json:"ao,omitempty"`
+	Effects         json.RawMessage `json:"ef,omitempty"`
+	MatteType       int             `json:"tt,omitempty"`
+	MasksProperties json.RawMessage `json:"masksProperties,omitempty"`
+}
+
+// HasEffects returns true if the layer contains After Effects filters/effects.
+func (l *Layer) HasEffects() bool {
+	if len(l.Effects) == 0 {
+		return false
+	}
+	s := strings.TrimSpace(string(l.Effects))
+	return s != "[]" && s != "null" && s != ""
+}
+
+// HasComplexMattes returns true if the layer uses Track Matte (tt > 0) or masks.
+func (l *Layer) HasComplexMattes() bool {
+	if l.MatteType > 0 {
+		return true
+	}
+	if len(l.MasksProperties) > 0 {
+		s := strings.TrimSpace(string(l.MasksProperties))
+		if s != "[]" && s != "null" && s != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // Parse parses a Lottie JSON byte slice into Animation.
