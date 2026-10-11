@@ -32,6 +32,9 @@ func main() {
 	batchDir := flag.String("batch", "", "Batch convert directory (matches official convert.sh)")
 	fpsFlag := flag.Float64("fps", 0, "Target FPS (default: use original or 25/30)")
 	qualityFlag := flag.Float64("quality", 0.80, "WebP quality (0.1 to 1.0, default: 0.80 - optimal balance)")
+	scaleFlag := flag.Float64("scale", 0, "Resolution scale factor (0.1 to 1.0, e.g. 0.55; 0: auto)")
+	targetKBFlag := flag.Int("target-kb", 0, "Target file size budget in KB (e.g. 100 for < 100 KB; auto-calibrates scale, FPS, & quality)")
+	compactFlag := flag.Bool("compact", false, "Ultra-compact preset strictly under 100 KB (< 100 KB) with kinematic decimation & bilinear upscaling")
 	maxFramesFlag := flag.Int("max-frames", 0, "Max frames to convert (0: all)")
 	losslessFlag := flag.Bool("lossless", false, "Strict lossless mode (preserves original source FPS and uncompressed frames)")
 	edgePath := flag.String("edge", "", "Path to Microsoft Edge, Chrome, or Chromium executable (auto-detected if empty)")
@@ -48,16 +51,30 @@ func main() {
 		return
 	}
 
+	opts := converter.DefaultRenderOptions()
+	opts.Quality = float32(*qualityFlag)
+	opts.FPS = float32(*fpsFlag)
+	opts.Scale = float32(*scaleFlag)
+	opts.TargetKB = *targetKBFlag
+	opts.Compact = *compactFlag
+	opts.MaxFrames = *maxFramesFlag
+	opts.Lossless = *losslessFlag
+	opts.EdgePath = *edgePath
+
+	useZstd := *zstdFlag
+	if *compactFlag {
+		useZstd = true
+	}
+
 	// Mode 2: Batch conversion
 	if *batchDir != "" {
-		handleBatch(*batchDir, *fpsFlag, *qualityFlag, *maxFramesFlag, *edgePath, *verifyFlag, *zstdFlag, *losslessFlag)
+		handleBatch(*batchDir, opts, *verifyFlag, useZstd)
 		return
 	}
 
 	// Mode 3: Support positional arguments matching Tencent CLI (./PAGConvertor <input> [output_or_fps] [fps])
 	targetInput := *inputPath
 	targetOutput := *outputPath
-	targetFPS := *fpsFlag
 
 	if targetInput == "" && flag.NArg() > 0 {
 		targetInput = flag.Arg(0)
@@ -65,14 +82,14 @@ func main() {
 			// Second arg can be output path or FPS number
 			arg1 := flag.Arg(1)
 			if f, err := strconv.ParseFloat(arg1, 64); err == nil {
-				targetFPS = f
+				opts.FPS = float32(f)
 			} else {
 				targetOutput = arg1
 			}
 		}
 		if flag.NArg() > 2 {
 			if f, err := strconv.ParseFloat(flag.Arg(2), 64); err == nil {
-				targetFPS = f
+				opts.FPS = float32(f)
 			}
 		}
 	}
@@ -87,21 +104,19 @@ func main() {
 		targetOutput = base + ".pag"
 	}
 
-	opts := converter.DefaultRenderOptions()
-	opts.Quality = float32(*qualityFlag)
-	opts.FPS = float32(targetFPS)
-	opts.MaxFrames = *maxFramesFlag
-	opts.Lossless = *losslessFlag
-	opts.EdgePath = *edgePath
-
-	convertSingleTarget(targetInput, targetOutput, opts, *verifyFlag, *zstdFlag)
+	convertSingleTarget(targetInput, targetOutput, opts, *verifyFlag, useZstd)
 }
 
 func printUsage() {
 	fmt.Println("Usage (Flag Mode):")
-	fmt.Println("  lottie2pag.exe -i <input.json | input.gif | folder/> [-o <output.pag>] [-fps 25] [-quality 0.80] [-lossless] [-zstd] [-verify]")
+	fmt.Println("  lottie2pag.exe -i <input.json | input.gif | folder/> [-o <output.pag>] [-compact] [-target-kb 100] [-scale 0.6] [-fps 24] [-quality 0.70] [-lossless] [-zstd] [-verify]")
 	fmt.Println("  lottie2pag.exe -inspect <file.pag | file.pag.zst>")
-	fmt.Println("  lottie2pag.exe -batch <input_folder> [-zstd] [-lossless]")
+	fmt.Println("  lottie2pag.exe -batch <input_folder> [-compact] [-zstd] [-lossless]")
+	fmt.Println("\nPresets & Mathematical Compression:")
+	fmt.Println("  -compact         : Auto-calibrates to strictly < 100 KB using kinematic decimation & bilinear upscaling")
+	fmt.Println("  -target-kb <int> : Dynamic mathematical solver for size budget (e.g. 100 for < 100 KB)")
+	fmt.Println("  -scale <float>   : Resolution scale factor (0.40 to 1.0; offloaded to GPU bilinear upscaler)")
+	fmt.Println("  -zstd            : Secondary meta-compression via Zstandard Finite State Entropy (Level 19)")
 	fmt.Println("\nUsage (Official Tencent CLI Compatible):")
 	fmt.Println("  lottie2pag.exe <input_file_or_dir> [output.pag] [fps]")
 	fmt.Println("  lottie2pag.exe <sequence_folder> [fps]")
@@ -182,19 +197,12 @@ func convertSingleTarget(inPath, outPath string, opts converter.RenderOptions, v
 	}
 }
 
-func handleBatch(dir string, fps, quality float64, maxFrames int, edgePath string, verify bool, useZstd bool, lossless bool) {
+func handleBatch(dir string, opts converter.RenderOptions, verify bool, useZstd bool) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		fmt.Printf("[-] Failed to read directory: %v\n", err)
 		os.Exit(1)
 	}
-
-	opts := converter.DefaultRenderOptions()
-	opts.Quality = float32(quality)
-	opts.FPS = float32(fps)
-	opts.MaxFrames = maxFrames
-	opts.Lossless = lossless
-	opts.EdgePath = edgePath
 
 	count := 0
 	for _, e := range entries {

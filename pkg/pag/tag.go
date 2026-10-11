@@ -358,8 +358,8 @@ func BuildTransform2D(posX, posY, scaleX, scaleY float32) []byte {
 	return out.Bytes()
 }
 
-// BuildImageLayerWithTime creates SubTag 5 (LayerTag) referencing an image asset with custom startTime and duration.
-func BuildImageLayerWithTime(layerID, imageID uint32, layerName string, startTime, durationFrames uint64, posX, posY float32) ([]byte, error) {
+// BuildImageLayerWithTransform creates SubTag 5 (LayerTag) referencing an image asset with position and scale transforms.
+func BuildImageLayerWithTransform(layerID, imageID uint32, layerName string, startTime, durationFrames uint64, posX, posY, scaleX, scaleY float32) ([]byte, error) {
 	s := NewBitStream()
 	// LayerType = 5 (ImageLayer)
 	if err := s.WriteByte(LayerTypeImage); err != nil {
@@ -377,7 +377,12 @@ func BuildImageLayerWithTime(layerID, imageID uint32, layerName string, startTim
 	}
 
 	// SubTag 13: Transform
-	transPayload := BuildDefaultTransform(posX, posY)
+	var transPayload []byte
+	if scaleX != 1.0 || scaleY != 1.0 || posX != 0 || posY != 0 {
+		transPayload = BuildTransform2D(posX, posY, scaleX, scaleY)
+	} else {
+		transPayload = BuildDefaultTransform(posX, posY)
+	}
 	if err := WriteTag(s, TagLayerTransform, transPayload); err != nil {
 		return nil, err
 	}
@@ -397,6 +402,11 @@ func BuildImageLayerWithTime(layerID, imageID uint32, layerName string, startTim
 	}
 
 	return s.Bytes(), nil
+}
+
+// BuildImageLayerWithTime creates SubTag 5 (LayerTag) referencing an image asset with custom startTime and duration.
+func BuildImageLayerWithTime(layerID, imageID uint32, layerName string, startTime, durationFrames uint64, posX, posY float32) ([]byte, error) {
+	return BuildImageLayerWithTransform(layerID, imageID, layerName, startTime, durationFrames, posX, posY, 1.0, 1.0)
 }
 
 // BuildImageLayer creates SubTag 5 (LayerTag) referencing an image asset starting at frame 0.

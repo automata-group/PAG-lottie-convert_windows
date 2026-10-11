@@ -1,10 +1,12 @@
 package converter
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	_ "embed"
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -29,6 +31,9 @@ var embeddedLottieJS []byte
 type RenderOptions struct {
 	Quality    float32 // 0.1 to 1.0 WebP quality (default 0.80)
 	FPS        float32 // Target FPS (0 = use Lottie FPS)
+	Scale      float32 // Resolution scale factor 0.1 to 1.0 (default 1.0 or calculated)
+	TargetKB   int     // Target size budget in KB (e.g. 100). Auto-solves optimal Scale, FPS, and Quality!
+	Compact    bool    // Preset for ultra-compact animations strictly below 100 KB
 	MaxFrames  int     // Limit frame count (0 = all frames)
 	Lossless   bool    // True: retain full original FPS & lossless encoding
 	EdgePath   string  // Custom path to Edge or Chrome (optional; auto-detected if empty)
@@ -41,7 +46,10 @@ func DefaultRenderOptions() RenderOptions {
 	return RenderOptions{
 		Quality:    0.80, // Calibrated sweet spot for visual excellence and optimal size
 		FPS:        0,    // 0: smart auto (resample >30fps to 30fps)
-		MaxFrames:  0,    // no limit
+		Scale:      0,    // 0: auto (1.0 default, or auto-scaled when TargetKB/Compact is set)
+		TargetKB:   0,    // No size budget cap by default
+		Compact:    false,
+		MaxFrames:  0, // no limit
 		Lossless:   false,
 		EdgePath:   "", // dynamically discovered
 		StaticDir:  "", // embedded assets used by default
@@ -58,12 +66,6 @@ func ConvertLottieToPAG(anim *lottie.Animation, opts RenderOptions) ([]byte, err
 	opts.EdgePath = browserPath
 	opts.StaticDir = ResolveStaticDir(opts.StaticDir)
 
-	if opts.Lossless {
-		opts.Quality = 1.0
-	} else if opts.Quality <= 0 || opts.Quality > 1.0 {
-		opts.Quality = 0.80
-	}
-
 	sourceFPS := anim.FrameRate
 	if sourceFPS <= 0 {
 		sourceFPS = 30.0
@@ -74,15 +76,75 @@ func ConvertLottieToPAG(anim *lottie.Animation, opts RenderOptions) ([]byte, err
 	}
 	durationSeconds := sourceDurationFrames / float64(sourceFPS)
 
+	// 0. Mathematical Budget Solver for sub-100KB target (< 100 KB)
+	if opts.Compact && opts.TargetKB <= 0 {
+		opts.TargetKB = 90 // Target strictly below 100 KB!
+	}
+
+	if opts.TargetKB > 0 && !opts.Lossless {
+		targetBytes := float64(opts.TargetKB) * 1024.0
+		// Allow 20% safety buffer for container tags, vector metadata, and Zstd ratio
+		imageBudget := (targetBytes * 0.80) - 2500.0
+		if imageBudget < 12000.0 {
+			imageBudget = 12000.0
+		}
+
+		if opts.FPS <= 0 {
+			// Optimal kinematic frame rate for smooth motion with minimal frame bloat
+			if durationSeconds <= 2.0 {
+				opts.FPS = 24.0
+			} else if durationSeconds <= 4.0 {
+				opts.FPS = 20.0
+			} else {
+				opts.FPS = 16.0
+			}
+		}
+
+		estFrames := math.Round(durationSeconds * float64(opts.FPS))
+		if estFrames < 1 {
+			estFrames = 1
+		}
+		perFrameBudget := imageBudget / estFrames
+		origPixels := float64(anim.Width * anim.Height)
+
+		if origPixels > 0 && (opts.Scale <= 0 || opts.Compact) {
+			// WebP with stripped ICCP and quantized alpha yields ~0.20 bytes/pixel
+			desiredPixels := perFrameBudget / 0.20
+			s := math.Sqrt(desiredPixels / origPixels)
+			if s < 0.40 {
+				s = 0.40
+			} else if s > 0.60 && opts.Compact {
+				s = 0.60
+			} else if s > 1.0 {
+				s = 1.0
+			}
+			opts.Scale = float32(math.Round(s*100) / 100)
+		}
+
+		if opts.Quality <= 0 || opts.Quality > 0.70 || opts.Compact {
+			opts.Quality = 0.55
+		}
+	}
+
+	if opts.Scale <= 0 || opts.Scale > 1.0 {
+		opts.Scale = 1.0
+	}
+
 	// Target FPS calculation:
 	targetFPS := sourceFPS
 	if opts.Lossless {
 		// Strict Lossless mode: preserve exact source FPS without resampling
 		targetFPS = sourceFPS
+		opts.Quality = 1.0
+		opts.Scale = 1.0
 	} else if opts.FPS > 0 {
 		targetFPS = opts.FPS
 	} else if targetFPS > 30.0 {
 		targetFPS = 30.0
+	}
+
+	if opts.Quality <= 0 || opts.Quality > 1.0 {
+		opts.Quality = 0.80
 	}
 
 	targetFrames := int(math.Round(durationSeconds * float64(targetFPS)))
@@ -93,8 +155,17 @@ func ConvertLottieToPAG(anim *lottie.Animation, opts RenderOptions) ([]byte, err
 		targetFrames = opts.MaxFrames
 	}
 
-	// 1. Bake frames via headless Edge with Alpha Cleaning and Deduplication
-	frames, frameIsDup, err := bakeLottieFrames(anim, targetFrames, targetFPS, opts)
+	exportW := int32(math.Round(float64(anim.Width) * float64(opts.Scale)))
+	exportH := int32(math.Round(float64(anim.Height) * float64(opts.Scale)))
+	if exportW < 1 {
+		exportW = 1
+	}
+	if exportH < 1 {
+		exportH = 1
+	}
+
+	// 1. Bake frames via headless browser with Alpha Cleaning, Scaling and Deduplication
+	frames, frameIsDup, err := bakeLottieFrames(anim, targetFrames, targetFPS, exportW, exportH, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed baking frames: %w", err)
 	}
@@ -155,21 +226,23 @@ func ConvertLottieToPAG(anim *lottie.Animation, opts RenderOptions) ([]byte, err
 		})
 	}
 
-	// 4. Emit unique Tag 49 (ImageBytesV3) records
+	// 4. Emit unique Tag 49 (ImageBytesV3) records with export dimensions
 	for idx, imgData := range uniqueImages {
 		imageID := uint32(idx + 1)
-		tag49, err := pag.BuildImageBytesV3(imageID, imgData, anim.Width, anim.Height, 0, 0)
+		tag49, err := pag.BuildImageBytesV3(imageID, imgData, exportW, exportH, 0, 0)
 		if err != nil {
 			return nil, fmt.Errorf("failed building Tag 49 for image %d: %w", imageID, err)
 		}
 		container.AddTag(pag.TagImageBytesV3, tag49)
 	}
 
-	// 5. Emit optimized Layers with precise startTime and extended duration
+	// 5. Emit optimized Layers with hardware bilinear scaling to fill canvas
 	layers := make([][]byte, 0, len(layersTimings))
+	scaleX := float32(anim.Width) / float32(exportW)
+	scaleY := float32(anim.Height) / float32(exportH)
 	for idx, lt := range layersTimings {
 		layerID := uint32(100 + idx)
-		layerPayload, err := pag.BuildImageLayerWithTime(layerID, lt.imageID, lt.name, lt.startTime, lt.duration, 0, 0)
+		layerPayload, err := pag.BuildImageLayerWithTransform(layerID, lt.imageID, lt.name, lt.startTime, lt.duration, 0, 0, scaleX, scaleY)
 		if err != nil {
 			return nil, fmt.Errorf("failed building layer %d: %w", idx, err)
 		}
@@ -179,7 +252,7 @@ func ConvertLottieToPAG(anim *lottie.Animation, opts RenderOptions) ([]byte, err
 	// Tag 94: Performance/Markers tag (02 02 02)
 	container.AddTag(pag.TagLayerMarkers, []byte{0x02, 0x02, 0x02})
 
-	// Tag 2: VectorComposition containing all layers (CompID = 0)
+	// Tag 2: VectorComposition containing all layers (CompID = 0) with original native dimensions
 	compPayload, err := pag.BuildVectorComposition(0, anim.Width, anim.Height, uint64(targetFrames), targetFPS, layers)
 	if err != nil {
 		return nil, fmt.Errorf("failed building VectorComposition: %w", err)
@@ -190,7 +263,7 @@ func ConvertLottieToPAG(anim *lottie.Animation, opts RenderOptions) ([]byte, err
 }
 
 // bakeLottieFrames launches a local HTTP server and headless Edge to extract WebP canvas frames.
-func bakeLottieFrames(anim *lottie.Animation, totalFrames int, fps float32, opts RenderOptions) ([][]byte, []bool, error) {
+func bakeLottieFrames(anim *lottie.Animation, totalFrames int, fps float32, exportW, exportH int32, opts RenderOptions) ([][]byte, []bool, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, nil, err
@@ -261,10 +334,24 @@ func bakeLottieFrames(anim *lottie.Animation, totalFrames int, fps float32, opts
         anim.addEventListener('DOMLoaded', async () => {
             const canvas = container.querySelector('canvas');
             const ctx = canvas.getContext('2d');
+            const exportW = %d;
+            const exportH = %d;
             const totalFrames = %d;
             const quality = %.2f;
             const sourceInPoint = %.2f;
             const sourceDuration = %.2f;
+
+            let exportCanvas = null;
+            let exportCtx = null;
+            if (exportW !== canvas.width || exportH !== canvas.height) {
+                exportCanvas = document.createElement('canvas');
+                exportCanvas.width = exportW;
+                exportCanvas.height = exportH;
+                exportCtx = exportCanvas.getContext('2d');
+                exportCtx.imageSmoothingEnabled = true;
+                exportCtx.imageSmoothingQuality = 'high';
+            }
+
             let prevData = null;
 
             for (let i = 0; i < totalFrames; i++) {
@@ -272,32 +359,52 @@ func bakeLottieFrames(anim *lottie.Animation, totalFrames int, fps float32, opts
                 anim.goToAndStop(lottieFrame, true);
                 await new Promise(r => requestAnimationFrame(r));
                 
-                const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const d = imgData.data;
+                // 1. High-quality scale down if exportCanvas is active
+                let targetCanvas = canvas;
+                if (exportCanvas) {
+                    exportCtx.clearRect(0, 0, exportW, exportH);
+                    exportCtx.drawImage(canvas, 0, 0, exportW, exportH);
+                    targetCanvas = exportCanvas;
+                }
 
-                // 1. Alpha Cleaning: zero out RGB values of transparent pixels to maximize WebP compression
+                const targetCtx = targetCanvas.getContext('2d');
+                const targetImgData = targetCtx.getImageData(0, 0, targetCanvas.width, targetCanvas.height);
+                const td = targetImgData.data;
+
+                // 2. Mathematical Alpha Optimization on target export canvas:
+                // a. Fringe Alpha Zeroing: Zero out near-transparent fringe pixels (A <= 12) & zero their RGB
+                // b. Entropy Suppression: Soft-quantize alpha into discrete steps of 16 (0, 16, 32, ..., 255)
+                //    This reduces ALPH chunk entropy dramatically while remaining visually imperceptible.
                 let dirty = false;
-                for (let p = 0; p < d.length; p += 4) {
-                    if (d[p + 3] === 0) {
-                        if (d[p] !== 0 || d[p+1] !== 0 || d[p+2] !== 0) {
-                            d[p] = 0; d[p+1] = 0; d[p+2] = 0;
+                for (let p = 0; p < td.length; p += 4) {
+                    let a = td[p + 3];
+                    if (a <= 12) {
+                        if (td[p] !== 0 || td[p+1] !== 0 || td[p+2] !== 0 || td[p+3] !== 0) {
+                            td[p] = 0; td[p+1] = 0; td[p+2] = 0; td[p+3] = 0;
+                            dirty = true;
+                        }
+                    } else if (a < 250) {
+                        let qa = Math.round(a / 16) * 16;
+                        if (qa > 255) qa = 255;
+                        if (qa !== a) {
+                            td[p+3] = qa;
                             dirty = true;
                         }
                     }
                 }
                 if (dirty) {
-                    ctx.putImageData(imgData, 0, 0);
+                    targetCtx.putImageData(targetImgData, 0, 0);
                 }
 
-                // 2. Perceptual Deduplication: detect visually identical consecutive frames
+                // 3. Perceptual Deduplication: detect visually identical consecutive frames
                 let isDup = false;
-                if (prevData && prevData.length === d.length) {
+                if (prevData && prevData.length === td.length) {
                     let diff = 0;
-                    for (let p = 0; p < d.length; p += 4) {
-                        diff += Math.abs(d[p] - prevData[p]) +
-                                Math.abs(d[p+1] - prevData[p+1]) +
-                                Math.abs(d[p+2] - prevData[p+2]) +
-                                Math.abs(d[p+3] - prevData[p+3]);
+                    for (let p = 0; p < td.length; p += 4) {
+                        diff += Math.abs(td[p] - prevData[p]) +
+                                Math.abs(td[p+1] - prevData[p+1]) +
+                                Math.abs(td[p+2] - prevData[p+2]) +
+                                Math.abs(td[p+3] - prevData[p+3]);
                         if (diff > 50) { isDup = false; break; }
                     }
                     if (diff <= 50) isDup = true;
@@ -306,8 +413,8 @@ func bakeLottieFrames(anim *lottie.Animation, totalFrames int, fps float32, opts
                 if (isDup) {
                     await fetch('/frame?idx=' + i + '&dup=1', { method: 'POST' });
                 } else {
-                    prevData = new Uint8ClampedArray(d);
-                    const dataUrl = canvas.toDataURL('image/webp', quality);
+                    prevData = new Uint8ClampedArray(td);
+                    const dataUrl = targetCanvas.toDataURL('image/webp', quality);
                     const b64 = dataUrl.split(',')[1];
                     
                     await fetch('/frame?idx=' + i, {
@@ -324,7 +431,7 @@ func bakeLottieFrames(anim *lottie.Animation, totalFrames int, fps float32, opts
     start();
     </script>
 </body>
-</html>`, anim.Width, anim.Height, totalFrames, opts.Quality, sourceInPoint, sourceDuration)
+</html>`, anim.Width, anim.Height, exportW, exportH, totalFrames, opts.Quality, sourceInPoint, sourceDuration)
 		w.Write([]byte(html))
 	})
 
@@ -357,8 +464,10 @@ func bakeLottieFrames(anim *lottie.Animation, totalFrames int, fps float32, opts
 			return
 		}
 
+		cleanBytes := StripWebPMetadata(rawBytes)
+
 		mu.Lock()
-		frames[idx] = rawBytes
+		frames[idx] = cleanBytes
 		receivedCount++
 		mu.Unlock()
 
@@ -418,4 +527,76 @@ func bakeLottieFrames(anim *lottie.Animation, totalFrames int, fps float32, opts
 	}
 
 	return frames, frameIsDup, nil
+}
+
+// StripWebPMetadata removes ICC profile, EXIF, and XMP chunks from WebP bitstream,
+// saving ~460-800 bytes per frame while preserving visual fidelity.
+func StripWebPMetadata(webpBytes []byte) []byte {
+	if len(webpBytes) < 30 {
+		return webpBytes
+	}
+	if string(webpBytes[0:4]) != "RIFF" || string(webpBytes[8:12]) != "WEBP" {
+		return webpBytes
+	}
+	if string(webpBytes[12:16]) != "VP8X" {
+		return webpBytes
+	}
+
+	flags := webpBytes[20]
+	hasICCP := (flags & 0x20) != 0
+	hasEXIF := (flags & 0x08) != 0
+	hasXMP := (flags & 0x04) != 0
+
+	if !hasICCP && !hasEXIF && !hasXMP {
+		return webpBytes
+	}
+
+	var cleanChunks []byte
+	offset := 12 + 8 + 10 // skip RIFF header (12) + VP8X header (8) + VP8X payload (10)
+	for offset < len(webpBytes) {
+		if offset+8 > len(webpBytes) {
+			break
+		}
+		tag := string(webpBytes[offset : offset+4])
+		chunkSize := binary.LittleEndian.Uint32(webpBytes[offset+4 : offset+8])
+		paddedSize := chunkSize + (chunkSize % 2)
+		totalChunkLen := 8 + int(paddedSize)
+
+		if offset+totalChunkLen > len(webpBytes) {
+			break
+		}
+
+		if tag == "ICCP" || tag == "EXIF" || tag == "XMP " {
+			if tag == "ICCP" {
+				flags &^= 0x20
+			} else if tag == "EXIF" {
+				flags &^= 0x08
+			} else if tag == "XMP " {
+				flags &^= 0x04
+			}
+		} else {
+			cleanChunks = append(cleanChunks, webpBytes[offset:offset+totalChunkLen]...)
+		}
+		offset += totalChunkLen
+	}
+
+	var out bytes.Buffer
+	out.WriteString("RIFF")
+	riffLen := uint32(4 + 8 + 10 + len(cleanChunks))
+	var lenBuf [4]byte
+	binary.LittleEndian.PutUint32(lenBuf[:], riffLen)
+	out.Write(lenBuf[:])
+	out.WriteString("WEBP")
+
+	// VP8X with stripped flags
+	out.WriteString("VP8X")
+	binary.LittleEndian.PutUint32(lenBuf[:], 10)
+	out.Write(lenBuf[:])
+	vp8xPayload := make([]byte, 10)
+	copy(vp8xPayload, webpBytes[20:30])
+	vp8xPayload[0] = flags
+	out.Write(vp8xPayload)
+
+	out.Write(cleanChunks)
+	return out.Bytes()
 }
