@@ -424,6 +424,10 @@ func parseLottieShapeElements(raw json.RawMessage) [][]byte {
 			if strokeTag := buildStrokeFromLottie(it); len(strokeTag) > 0 {
 				elements = append(elements, strokeTag)
 			}
+		case "gs": // Gradient Stroke
+			if gsTag := buildGradientStrokeFromLottie(it); len(gsTag) > 0 {
+				elements = append(elements, gsTag)
+			}
 		case "gr": // Group
 			if grpItems, ok := it["it"].([]interface{}); ok {
 				subJSON, err := json.Marshal(grpItems)
@@ -442,26 +446,24 @@ func parseLottieShapeElements(raw json.RawMessage) [][]byte {
 	return elements
 }
 
-
 func buildFillFromLottie(m map[string]interface{}) []byte {
 	r, g, b := byte(255), byte(255), byte(255)
 	opacity := byte(255)
 
-	if cObj, ok := m["c"].(map[string]interface{}); ok {
-		if kArr, ok := cObj["k"].([]interface{}); ok && len(kArr) >= 3 {
-			rf, _ := kArr[0].(float64)
-			gf, _ := kArr[1].(float64)
-			bf, _ := kArr[2].(float64)
-			r = byte(clamp01(rf) * 255.0)
-			g = byte(clamp01(gf) * 255.0)
-			b = byte(clamp01(bf) * 255.0)
+	if cSlice := unwrapColorSlice(m["c"]); len(cSlice) >= 3 {
+		if cSlice[0] <= 1.0 && cSlice[1] <= 1.0 && cSlice[2] <= 1.0 {
+			r = byte(clamp01(cSlice[0]) * 255.0)
+			g = byte(clamp01(cSlice[1]) * 255.0)
+			b = byte(clamp01(cSlice[2]) * 255.0)
+		} else {
+			r = byte(clamp255(cSlice[0]))
+			g = byte(clamp255(cSlice[1]))
+			b = byte(clamp255(cSlice[2]))
 		}
 	}
 
-	if oObj, ok := m["o"].(map[string]interface{}); ok {
-		if of, ok := oObj["k"].(float64); ok {
-			opacity = byte((clamp01(of / 100.0)) * 255.0)
-		}
+	if oSlice := unwrapColorSlice(m["o"]); len(oSlice) >= 1 {
+		opacity = byte(clamp01(oSlice[0] / 100.0) * 255.0)
 	}
 
 	tag, err := pag.BuildFill(r, g, b, opacity)
@@ -476,21 +478,24 @@ func buildStrokeFromLottie(m map[string]interface{}) []byte {
 	opacity := byte(255)
 	width := float32(2.0)
 
-	if cObj, ok := m["c"].(map[string]interface{}); ok {
-		if kArr, ok := cObj["k"].([]interface{}); ok && len(kArr) >= 3 {
-			rf, _ := kArr[0].(float64)
-			gf, _ := kArr[1].(float64)
-			bf, _ := kArr[2].(float64)
-			r = byte(clamp01(rf) * 255.0)
-			g = byte(clamp01(gf) * 255.0)
-			b = byte(clamp01(bf) * 255.0)
+	if cSlice := unwrapColorSlice(m["c"]); len(cSlice) >= 3 {
+		if cSlice[0] <= 1.0 && cSlice[1] <= 1.0 && cSlice[2] <= 1.0 {
+			r = byte(clamp01(cSlice[0]) * 255.0)
+			g = byte(clamp01(cSlice[1]) * 255.0)
+			b = byte(clamp01(cSlice[2]) * 255.0)
+		} else {
+			r = byte(clamp255(cSlice[0]))
+			g = byte(clamp255(cSlice[1]))
+			b = byte(clamp255(cSlice[2]))
 		}
 	}
 
-	if wObj, ok := m["w"].(map[string]interface{}); ok {
-		if wf, ok := wObj["k"].(float64); ok && wf > 0 {
-			width = float32(wf)
-		}
+	if oSlice := unwrapColorSlice(m["o"]); len(oSlice) >= 1 {
+		opacity = byte(clamp01(oSlice[0] / 100.0) * 255.0)
+	}
+
+	if wSlice := unwrapColorSlice(m["w"]); len(wSlice) >= 1 && wSlice[0] > 0 {
+		width = float32(wSlice[0])
 	}
 
 	tag, err := pag.BuildStroke(r, g, b, opacity, width)
@@ -684,21 +689,49 @@ func buildGradientFillFromLottie(m map[string]interface{}) []byte {
 	r, g, b := byte(128), byte(128), byte(128)
 	opacity := byte(255)
 
+	pStops := 2
 	if gObj, ok := m["g"].(map[string]interface{}); ok {
-		if kArr, ok := gObj["k"].([]interface{}); ok && len(kArr) >= 4 {
-			rf, _ := kArr[1].(float64)
-			gf, _ := kArr[2].(float64)
-			bf, _ := kArr[3].(float64)
-			r = byte(clamp01(rf) * 255.0)
-			g = byte(clamp01(gf) * 255.0)
-			b = byte(clamp01(bf) * 255.0)
+		if pVal, ok := toFloat64(gObj["p"]); ok && pVal >= 1 {
+			pStops = int(pVal)
 		}
 	}
 
-	if oObj, ok := m["o"].(map[string]interface{}); ok {
-		if of, ok := oObj["k"].(float64); ok {
-			opacity = byte(clamp01(of/100.0) * 255.0)
+	gSlice := unwrapColorSlice(m["g"])
+	if len(gSlice) >= 4 {
+		type colorStop struct {
+			r, g, b byte
 		}
+		var stops []colorStop
+		for i := 0; i < pStops; i++ {
+			idx := i * 4
+			if idx+3 < len(gSlice) {
+				rf := gSlice[idx+1]
+				gf := gSlice[idx+2]
+				bf := gSlice[idx+3]
+				var stopR, stopG, stopB byte
+				if rf <= 1.0 && gf <= 1.0 && bf <= 1.0 {
+					stopR = byte(clamp01(rf) * 255.0)
+					stopG = byte(clamp01(gf) * 255.0)
+					stopB = byte(clamp01(bf) * 255.0)
+				} else {
+					stopR = byte(clamp255(rf))
+					stopG = byte(clamp255(gf))
+					stopB = byte(clamp255(bf))
+				}
+				stops = append(stops, colorStop{r: stopR, g: stopG, b: stopB})
+			}
+		}
+
+		if len(stops) > 0 {
+			midIdx := len(stops) / 2
+			r = stops[midIdx].r
+			g = stops[midIdx].g
+			b = stops[midIdx].b
+		}
+	}
+
+	if oSlice := unwrapColorSlice(m["o"]); len(oSlice) >= 1 {
+		opacity = byte(clamp01(oSlice[0]/100.0) * 255.0)
 	}
 
 	tag, err := pag.BuildFill(r, g, b, opacity)
@@ -708,6 +741,119 @@ func buildGradientFillFromLottie(m map[string]interface{}) []byte {
 	return tag
 }
 
+func buildGradientStrokeFromLottie(m map[string]interface{}) []byte {
+	r, g, b := byte(128), byte(128), byte(128)
+	opacity := byte(255)
+	width := float32(2.0)
+
+	pStops := 2
+	if gObj, ok := m["g"].(map[string]interface{}); ok {
+		if pVal, ok := toFloat64(gObj["p"]); ok && pVal >= 1 {
+			pStops = int(pVal)
+		}
+	}
+
+	gSlice := unwrapColorSlice(m["g"])
+	if len(gSlice) >= 4 {
+		type colorStop struct {
+			r, g, b byte
+		}
+		var stops []colorStop
+		for i := 0; i < pStops; i++ {
+			idx := i * 4
+			if idx+3 < len(gSlice) {
+				rf := gSlice[idx+1]
+				gf := gSlice[idx+2]
+				bf := gSlice[idx+3]
+				var stopR, stopG, stopB byte
+				if rf <= 1.0 && gf <= 1.0 && bf <= 1.0 {
+					stopR = byte(clamp01(rf) * 255.0)
+					stopG = byte(clamp01(gf) * 255.0)
+					stopB = byte(clamp01(bf) * 255.0)
+				} else {
+					stopR = byte(clamp255(rf))
+					stopG = byte(clamp255(gf))
+					stopB = byte(clamp255(bf))
+				}
+				stops = append(stops, colorStop{r: stopR, g: stopG, b: stopB})
+			}
+		}
+
+		if len(stops) > 0 {
+			midIdx := len(stops) / 2
+			r = stops[midIdx].r
+			g = stops[midIdx].g
+			b = stops[midIdx].b
+		}
+	}
+
+	if oSlice := unwrapColorSlice(m["o"]); len(oSlice) >= 1 {
+		opacity = byte(clamp01(oSlice[0]/100.0) * 255.0)
+	}
+
+	if wSlice := unwrapColorSlice(m["w"]); len(wSlice) >= 1 && wSlice[0] > 0 {
+		width = float32(wSlice[0])
+	}
+
+	tag, err := pag.BuildStroke(r, g, b, opacity, width)
+	if err != nil {
+		return nil
+	}
+	return tag
+}
+
+// unwrapColorSlice extracts a float slice representing color or gradient data
+// from arbitrary Bodymovin structures (direct arrays, {"k": [...]}, {"a": 0, "k": [...]}, or keyframe objects [{"s": [...]}]).
+func unwrapColorSlice(raw interface{}) []float64 {
+	if raw == nil {
+		return nil
+	}
+	switch v := raw.(type) {
+	case map[string]interface{}:
+		if kVal, exists := v["k"]; exists {
+			return unwrapColorSlice(kVal)
+		}
+	case []interface{}:
+		if len(v) == 0 {
+			return nil
+		}
+		// If element is a keyframe object {"s": [...]}
+		if firstMap, ok := v[0].(map[string]interface{}); ok {
+			if sVal, exists := firstMap["s"]; exists {
+				return unwrapColorSlice(sVal)
+			}
+		}
+		// Direct numbers
+		res := make([]float64, 0, len(v))
+		for _, item := range v {
+			if f, ok := toFloat64(item); ok {
+				res = append(res, f)
+			}
+		}
+		if len(res) > 0 {
+			return res
+		}
+	}
+	return nil
+}
+
+func toFloat64(val interface{}) (float64, bool) {
+	switch n := val.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case json.Number:
+		if f, err := n.Float64(); err == nil {
+			return f, true
+		}
+	}
+	return 0, false
+}
 
 func clamp01(v float64) float64 {
 	if v < 0 {
@@ -715,6 +861,16 @@ func clamp01(v float64) float64 {
 	}
 	if v > 1 {
 		return 1
+	}
+	return v
+}
+
+func clamp255(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	if v > 255 {
+		return 255
 	}
 	return v
 }
