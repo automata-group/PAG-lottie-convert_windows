@@ -202,6 +202,60 @@ func (s *BitStream) WriteBits(value int32, numBits uint8) {
 	s.WriteUBits(data, numBits)
 }
 
+// WriteInt32List writes an array of int32 using bit-packed bit width.
+// Matches Tencent libpag EncodeStream::writeInt32List.
+func (s *BitStream) WriteInt32List(values []int32) {
+	if len(values) == 0 {
+		s.WriteUBits(0, 5)
+		return
+	}
+	maxBits := uint8(1)
+	for _, v := range values {
+		bits := bitsForInt32(v)
+		if bits > maxBits {
+			maxBits = bits
+		}
+	}
+	s.WriteUBits(uint32(maxBits-1), 5)
+	for _, v := range values {
+		s.WriteBits(v, maxBits)
+	}
+}
+
+// WriteFloatList quantizes float32 values with given precision and writes them.
+// Matches Tencent libpag EncodeStream::writeFloatList.
+func (s *BitStream) WriteFloatList(values []float32, precision float32) {
+	if len(values) == 0 {
+		s.WriteUBits(0, 5)
+		return
+	}
+	scale := 1.0 / precision
+	ints := make([]int32, len(values))
+	for i, v := range values {
+		ints[i] = int32(math.Round(float64(v * scale)))
+	}
+	s.WriteInt32List(ints)
+}
+
+func bitsForInt32(v int32) uint8 {
+	if v == 0 || v == -1 {
+		return 1
+	}
+	var u uint32
+	if v < 0 {
+		u = uint32(^v)
+	} else {
+		u = uint32(v)
+	}
+	bits := uint8(1)
+	for u > 0 {
+		bits++
+		u >>= 1
+	}
+	return bits
+}
+
+
 // WriteUTF8String writes a null-terminated UTF-8 string.
 func (s *BitStream) WriteUTF8String(str string) error {
 	s.AlignWithBytes()

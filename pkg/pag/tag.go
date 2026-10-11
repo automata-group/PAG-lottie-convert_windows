@@ -207,7 +207,7 @@ func BuildImageBytesV3(id uint32, webpData []byte, width, height, anchorX, ancho
 }
 
 // BuildImageBytesV2 creates Tag 48 (ImageBytesV2) payload containing PNG data.
-func BuildImageBytesV2(id uint32, pngData []byte, width, height, anchorX, anchorY int32) ([]byte, error) {
+func BuildImageBytesV2(id uint32, pngData []byte) ([]byte, error) {
 	if len(pngData) == 0 {
 		return nil, errors.New("empty png data for ImageBytesV2")
 	}
@@ -226,22 +226,6 @@ func BuildImageBytesV2(id uint32, pngData []byte, width, height, anchorX, anchor
 	}
 	// 4. Scale (1.0f)
 	if err := s.WriteFloat32(1.0); err != nil {
-		return nil, err
-	}
-	// 5. Width (> 0 required by ImageBytes::verify)
-	if err := s.WriteEncodedInt(int64(width)); err != nil {
-		return nil, err
-	}
-	// 6. Height (> 0 required by ImageBytes::verify)
-	if err := s.WriteEncodedInt(int64(height)); err != nil {
-		return nil, err
-	}
-	// 7. Anchor X
-	if err := s.WriteEncodedInt(int64(anchorX)); err != nil {
-		return nil, err
-	}
-	// 8. Anchor Y
-	if err := s.WriteEncodedInt(int64(anchorY)); err != nil {
 		return nil, err
 	}
 	return s.Bytes(), nil
@@ -415,8 +399,8 @@ func BuildImageLayer(layerID, imageID uint32, layerName string, durationFrames u
 }
 
 
-// BuildShapeLayer creates SubTag 5 (LayerTag) for a native vector Shape Layer.
-func BuildShapeLayer(layerID uint32, layerName string, durationFrames uint64, posX, posY float32, shapeTags [][]byte) ([]byte, error) {
+// BuildShapeLayerWithTime creates SubTag 5 (LayerTag) for a native vector Shape Layer with custom startTime and duration.
+func BuildShapeLayerWithTime(layerID uint32, layerName string, startTime, durationFrames uint64, posX, posY float32, shapeTags [][]byte) ([]byte, error) {
 	s := NewBitStream()
 	// LayerType = 4 (ShapeLayer)
 	if err := s.WriteByte(LayerTypeShape); err != nil {
@@ -427,7 +411,7 @@ func BuildShapeLayer(layerID uint32, layerName string, durationFrames uint64, po
 	}
 
 	// SubTag 52: LayerAttributes
-	attrPayload := BuildLayerAttributes(layerName, durationFrames)
+	attrPayload := BuildLayerAttributesWithTime(layerName, startTime, durationFrames)
 	if err := WriteTag(s, TagLayerAttributes, attrPayload); err != nil {
 		return nil, err
 	}
@@ -449,6 +433,11 @@ func BuildShapeLayer(layerID uint32, layerName string, durationFrames uint64, po
 	}
 
 	return s.Bytes(), nil
+}
+
+// BuildShapeLayer creates SubTag 5 (LayerTag) for a native vector Shape Layer starting at frame 0.
+func BuildShapeLayer(layerID uint32, layerName string, durationFrames uint64, posX, posY float32, shapeTags [][]byte) ([]byte, error) {
+	return BuildShapeLayerWithTime(layerID, layerName, 0, durationFrames, posX, posY, shapeTags)
 }
 
 // BuildSolidLayer creates SubTag 5 (LayerTag) for a solid color background layer.
@@ -522,7 +511,127 @@ func BuildShapeGroup(elements [][]byte) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
+// BuildShapePath creates Tag 19 (ShapePath) payload.
+// verbs contains PathVerb constants (PathVerbMove, PathVerbLine, PathVerbCurve11, PathVerbClose).
+// coords contains float32 coordinates for each point (X, Y).
+func BuildShapePath(verbs []byte, coords []float32) ([]byte, error) {
+	if len(verbs) == 0 {
+		return nil, errors.New("empty verbs for ShapePath")
+	}
+
+	pw := NewBitStream()
+	// 1. Number of verbs (LEB128)
+	if err := pw.WriteEncodedUint(uint64(len(verbs))); err != nil {
+		return nil, err
+	}
+	// 2. 3 bits per verb
+	for _, v := range verbs {
+		pw.WriteUBits(uint32(v), 3)
+	}
+	// 3. Float list coordinates with 0.05 precision
+	pw.WriteFloatList(coords, SpatialPrecision)
+	pw.AlignWithBytes()
+
+	// Tag 19 flags:
+	// exist = true (1 bit)
+	// animatable = false (1 bit)
+	flags := NewBitStream()
+	flags.WriteBitBoolean(true)
+	flags.WriteBitBoolean(false)
+	flags.AlignWithBytes()
+
+	payload := append(flags.Bytes(), pw.Bytes()...)
+
+	out := NewBitStream()
+	if err := WriteTag(out, TagShapePath, payload); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+// BuildRectangle creates Tag 16 (Rectangle) payload.
+func BuildRectangle(w, h, posX, posY, roundness float32) ([]byte, error) {
+	flags := NewBitStream()
+	content := NewBitStream()
+
+	// 1. reversed (false)
+	flags.WriteBitBoolean(false)
+
+	// 2. roundness
+	if roundness > 0 {
+		flags.WriteBitBoolean(true)
+		flags.WriteBitBoolean(false)
+		content.WriteFloat32(roundness)
+	} else {
+		flags.WriteBitBoolean(false)
+	}
+
+	// 3. size
+	flags.WriteBitBoolean(true)
+	flags.WriteBitBoolean(false)
+	flags.WriteBitBoolean(false)
+	content.WriteFloat32(w)
+	content.WriteFloat32(h)
+
+	// 4. position
+	if posX != 0 || posY != 0 {
+		flags.WriteBitBoolean(true)
+		flags.WriteBitBoolean(false)
+		flags.WriteBitBoolean(false)
+		content.WriteFloat32(posX)
+		content.WriteFloat32(posY)
+	} else {
+		flags.WriteBitBoolean(false)
+	}
+
+	flags.AlignWithBytes()
+	payload := append(flags.Bytes(), content.Bytes()...)
+
+	out := NewBitStream()
+	if err := WriteTag(out, TagRectangle, payload); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+// BuildEllipse creates Tag 17 (Ellipse) payload.
+func BuildEllipse(w, h, posX, posY float32) ([]byte, error) {
+	flags := NewBitStream()
+	content := NewBitStream()
+
+	// 1. reversed (false)
+	flags.WriteBitBoolean(false)
+
+	// 2. size
+	flags.WriteBitBoolean(true)
+	flags.WriteBitBoolean(false)
+	flags.WriteBitBoolean(false)
+	content.WriteFloat32(w)
+	content.WriteFloat32(h)
+
+	// 3. position
+	if posX != 0 || posY != 0 {
+		flags.WriteBitBoolean(true)
+		flags.WriteBitBoolean(false)
+		flags.WriteBitBoolean(false)
+		content.WriteFloat32(posX)
+		content.WriteFloat32(posY)
+	} else {
+		flags.WriteBitBoolean(false)
+	}
+
+	flags.AlignWithBytes()
+	payload := append(flags.Bytes(), content.Bytes()...)
+
+	out := NewBitStream()
+	if err := WriteTag(out, TagEllipse, payload); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
 // BuildFill creates Tag 20 (Fill) payload.
+
 func BuildFill(r, g, b byte, opacity byte) ([]byte, error) {
 	flags := NewBitStream()
 	content := NewBitStream()

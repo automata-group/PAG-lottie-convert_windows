@@ -37,6 +37,7 @@ type RenderOptions struct {
 	MaxFrames  int     // Limit frame count (0 = all frames)
 	Lossless   bool    // True: retain full original FPS & lossless encoding
 	Vector     bool    // True: direct native vector export (zero full-canvas rasterization)
+	Vectorize  bool    // True: vectorize raster frames/images into native Tencent PAG vector paths
 	EdgePath   string  // Custom path to Edge or Chrome (optional; auto-detected if empty)
 	StaticDir  string  // Optional custom directory containing static assets
 	AppVersion string  // Tag 31 app name

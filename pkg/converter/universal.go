@@ -2,6 +2,9 @@ package converter
 
 import (
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,7 +48,7 @@ func ConvertAuto(inputPath string, opts RenderOptions) ([]byte, MediaType, error
 			return nil, MediaTypeLottie, fmt.Errorf("failed parsing Lottie JSON: %w", err)
 		}
 		var pagBytes []byte
-		if opts.Vector {
+		if opts.Vector || opts.Vectorize {
 			pagBytes, err = ConvertLottieDirectVector(anim, opts)
 		} else {
 			pagBytes, err = ConvertLottieToPAG(anim, opts)
@@ -63,6 +66,22 @@ func ConvertAuto(inputPath string, opts RenderOptions) ([]byte, MediaType, error
 		return pagBytes, MediaTypeGIF, nil
 
 	case ".png", ".webp", ".jpg", ".jpeg":
+		if opts.Vector || opts.Vectorize {
+			file, err := os.Open(inputPath)
+			if err != nil {
+				return nil, MediaTypeImage, fmt.Errorf("failed opening image: %w", err)
+			}
+			defer file.Close()
+			img, _, err := image.Decode(file)
+			if err != nil {
+				return nil, MediaTypeImage, fmt.Errorf("failed decoding image: %w", err)
+			}
+			pagBytes, err := ConvertSingleImageToVectorPAG(img)
+			if err != nil {
+				return nil, MediaTypeImage, fmt.Errorf("failed vectorizing image: %w", err)
+			}
+			return pagBytes, MediaTypeImage, nil
+		}
 		pagBytes, err := ConvertSingleImage(inputPath, opts)
 		if err != nil {
 			return nil, MediaTypeImage, err

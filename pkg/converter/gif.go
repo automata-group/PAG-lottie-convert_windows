@@ -3,6 +3,7 @@ package converter
 import (
 	"bytes"
 	"fmt"
+	"image"
 	"image/gif"
 	"image/png"
 	"os"
@@ -62,6 +63,14 @@ func ConvertGIF(gifPath string, opts RenderOptions) ([]byte, error) {
 	}
 	if fps <= 0 || fps > 120 {
 		fps = 25.0
+	}
+
+	if opts.Vector || opts.Vectorize {
+		frames := make([]image.Image, totalFrames)
+		for i := 0; i < totalFrames; i++ {
+			frames[i] = g.Image[i]
+		}
+		return ConvertRasterToVectorPAG(frames, fps, opts)
 	}
 
 	container := pag.NewContainer()

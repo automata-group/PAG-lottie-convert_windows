@@ -41,6 +41,7 @@ func main() {
 	verifyFlag := flag.Bool("verify", false, "Verify output PAG with official libpag.wasm via headless browser")
 	zstdFlag := flag.Bool("zstd", false, "Compress output with Zstandard (Zstd Level 19-22 / FSE ANS) for ultra-compact storage")
 	vectorFlag := flag.Bool("vector", false, "Direct native vector export without rasterizing full-canvas frames")
+	vectorizeFlag := flag.Bool("vectorize", false, "Vectorize raster input (images, GIF, sequence) into native Tencent PAG vector paths")
 
 	flag.Parse()
 
@@ -61,6 +62,7 @@ func main() {
 	opts.MaxFrames = *maxFramesFlag
 	opts.Lossless = *losslessFlag
 	opts.Vector = *vectorFlag
+	opts.Vectorize = *vectorizeFlag
 	opts.EdgePath = *edgePath
 
 	useZstd := *zstdFlag
@@ -115,6 +117,8 @@ func printUsage() {
 	fmt.Println("  lottie2pag.exe -inspect <file.pag | file.pag.zst>")
 	fmt.Println("  lottie2pag.exe -batch <input_folder> [-compact] [-zstd] [-lossless]")
 	fmt.Println("\nPresets & Mathematical Compression:")
+	fmt.Println("  -vector          : Direct native vector export (zero full-canvas rasterization)")
+	fmt.Println("  -vectorize       : Adaptive raster-to-vector engine (quantization + Moore-neighbor + RDP Bézier)")
 	fmt.Println("  -compact         : Auto-calibrates to strictly < 100 KB using kinematic decimation & bilinear upscaling")
 	fmt.Println("  -target-kb <int> : Dynamic mathematical solver for size budget (e.g. 100 for < 100 KB)")
 	fmt.Println("  -scale <float>   : Resolution scale factor (0.40 to 1.0; offloaded to GPU bilinear upscaler)")

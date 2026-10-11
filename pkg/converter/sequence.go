@@ -101,6 +101,23 @@ func ConvertImageSequence(dirPath string, opts RenderOptions) ([]byte, error) {
 		fps = opts.FPS
 	}
 
+	if opts.Vector || opts.Vectorize {
+		frames := make([]image.Image, totalFrames)
+		for i, fName := range validFiles {
+			fPath := filepath.Join(dirPath, fName)
+			fData, err := os.ReadFile(fPath)
+			if err != nil {
+				return nil, fmt.Errorf("failed reading frame %s: %w", fPath, err)
+			}
+			img, _, err := image.Decode(bytes.NewReader(fData))
+			if err != nil {
+				return nil, fmt.Errorf("failed decoding frame %s: %w", fPath, err)
+			}
+			frames[i] = img
+		}
+		return ConvertRasterToVectorPAG(frames, fps, opts)
+	}
+
 	container := pag.NewContainer()
 	container.AddTag(pag.TagTimeStretchMode, pag.BuildTimeStretchMode(pag.TimeStretchScale))
 

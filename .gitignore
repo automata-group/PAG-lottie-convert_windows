@@ -31,6 +31,8 @@ scripts/
 *.pag.zst
 *.zst
 *.tmp
+*.lottie
+*.json
 
 # Go Build & Workspace Artifacts
 bin/
