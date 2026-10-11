@@ -46,14 +46,15 @@
   * تكميم قناة الشفافية (Alpha Soft-Quantization) وترميز WebP بجودة مدروسة (Quality 0.55 – 0.85).
 * **التوصيف التقني الدقيق**:
   * هذه المرحلة هي **ضغط بصري/إدراكي ذكي (Perceptually Lossy)**، تهدف إلى إزالة البيانات الزائدة التي تعجز العين البشرية عن ملاحظتها على شاشات الجوال لتحقيق التخفيض الأقصى في الحجم.
-  * **الاستثناء الوحيد**: عند تفعيل خيار **`-lossless`** الصريح، يتم تعطيل خفض الإطارات (الحفاظ على 60 FPS كاملة) وضبط جودة WebP على 1.0 (Bit-for-Bit Lossless) لضمان تطابق رياضي مطلق لكل بيكسل.
+  * **وضع حفظ كامل الإطارات والجودة القصوى (`-lossless`)**: عند تفعيل هذا الخيار، يتم تعطيل خفض الإطارات تماماً (الحفاظ على معدل الإطارات الأصلي 60 FPS دون تجزئة زمنية)، وإبقاء الأبعاد الأصلية 1.0x دون تقليص، مع تعطيل تكميم الشفافية وترميز إطارات Canvas بأقصى جودة (WebP Quality 1.0).
+  * **تنبيه علمي دقيق**: تحويل Lottie (المبني على منحنيات بيزير المتجهية Vector) إلى إطارات صور نقطية هو تحويل من متجهي إلى نقطي (Vector-to-Raster)؛ لذا فإن مصطلح Lossless هنا يشير هندسياً إلى **عدم فقدان الإطارات (Zero Temporal Decimation) والحفاظ على أقصى دقة وجودة صور نقطية ممكنة**، وليس تطابقاً متجهياً مع ملف JSON الأصلي.
 
 ### المرحلة 2: ضغط الحاوية الثنائية عبر Zstandard (100% Bit-for-Bit Lossless)
 * **ماذا يحدث هنا؟**:
   * خوارزمية **Meta Zstandard (FSE/tANS Level 19–22)** تطبق كطبقة ضغط فوقي على بايتات ملف PAG المجمعة والجاهزة في نهاية المعالجة.
 * **التوصيف التقني الدقيق**:
-  * هذا الضغط **خالٍ تماماً من الفقدان رياضياً بنسبة 100% (Bit-for-Bit Lossless)**.
-  * لا يغير أي بيكسل أو إطار في الرسوم، وإنما يعيد تشفير تدفق البايتات بالإنتروبيا الرياضية لتقليص حجم الملف بنسبة إضافية تتراوح بين **8% إلى 20%** لنقله سحابياً وتخزينه في حزم التطبيقات، ثم يُفك ضغطه لحظياً في الذاكرة ليعود ملف PAG الأصلي المطابق تماماً.
+  * هذا الضغط **خالٍ تماماً من الفقدان رياضياً بنسبة 100% (Bit-for-Bit Lossless)** على مستوى تدفق البايتات الثنائية (Binary Stream).
+  * لا يغير أي بيكسل أو إطار في الرسوم، وإنما يعيد تشفير تدفق البايتات بالإنتروبيا الرياضية لتقليص حجم الملف بنسبة إضافية تتراوح بين **8% إلى 20%** لنقله سحابياً وتخزينه في حزم التطبيقات، ثم يُفك ضغطه لحظياً في الذاكرة ليعود ملف PAG الأصلي المطابق تماماً بايت-ببايت.
 
 ---
 
@@ -111,9 +112,11 @@
   3. **تكميم إنتروبيا قناة الشفافية وتصفير الحواف (Alpha Soft-Quantization & Fringe Zeroing)**:
      * تصفير البيكسلات الهامشية ($A \le 12$) وتكميم مستويات الشفافية إلى 16 مستوى منفصلاً ناعماً، مما يقلص حجم كتلة `ALPH` بنسبة تفوق **70%**.
   4. **الحل الرياضي التلقائي لميزانية الحجم (Target Budget Solver)**:
-     * معادلة رياضية لحساب معلمات الضغط تلقائياً:
+     * معادلة رياضية مغلقة لاحتساب معلمات الضغط تلقائياً بناءً على ميزانية البايتات:
        $$s = \sqrt{\frac{B_{\text{images}} / N}{k \cdot (W \times H)}}$$
-     * خيار `-compact` مخصص للرسوم الاجتماعية السريعة (يضبط الإطارات على 20 FPS، وعامل القياس على ~0.55، مع تفعيل Zstd تلقائياً).
+     * يخصص المحرك ميزانية صور $B_{\text{images}} = (\text{TargetBytes} \times 0.80) - 2500$ بايت لضمان هامش أمان كافٍ لوسوم وبيانات الحاوية الثنائية.
+     * **الحدود الدنيا الدفاعية (Defensive Clamping Floor)**: لحماية الأنيميشن من التدهور الحركي أو التشوه البيكسلي في حال اختيار ميزانية صغيرة جداً لملف معقد، يُلزم المحرك نفسه بحد أدنى لعامل القياس $s \ge 0.40$ وحد أدنى لجودة WebP بنسبة $\ge 0.55$. يتوقف المحرك بذكاء عند هذا الحد الأدنى لضمان سلامة العرض البصري.
+     * خيار `-compact` هو Preset محسّن للرسوم الاجتماعية (يضبط الإطارات تلقائياً على 20 FPS، وعامل القياس على ~0.55، مع تفعيل Zstd تلقائياً لتحقيق حجم أقل من 100 KB).
 
 > **⚠️ تنويه هندسي ومصداقية تجارية**:
 > الحجم النهائي لأي ملف PAG محكوم طبيعياً بمدته الزمنية ($Duration$)، وأبعاده ($W \times H$)، ومقدار التغير الحركي الفريد بين الإطارات.
@@ -126,17 +129,18 @@
 
 > **سياق الاختبار المرجعي**:
 > أُجريت الاختبارات على ملف الشارة النارية التفاعلية المعقدة `nickname_fire.json` (الأبعاد الأصلية: 190x88، المدة: 3.00 ثوانٍ، 117 طبقة حركية متداخلة):
+> *ملاحظة معيارية: وحدة KiB محسوبة بقسمة عدد البايتات على 1024 بدقة تامة.*
 
-| وضع التحويل والضغط | معدل الإطارات | الحجم بالبايت | الحجم بالكيلوبايت | نسبة التخفيض vs الخام | طبيعة الضغط والتوافق البصري |
+| وضع التحويل والضغط | معدل الإطارات | الحجم بالبايت | الحجم (KiB) | نسبة التخفيض vs الخام | طبيعة الضغط والتوافق البصري |
 |---|:---:|:---:|:---:|:---:|:---:|
-| **الأصل الخام (Bake 60fps)** | 180 (60 FPS) | 1,765,569 | **1,724.0 KB** | نقطة الأساس | الأصل المرجعي غير المضغوط |
-| **الوضع الرياضي الخالي من الفقدان (`-lossless`)** | 180 (60 FPS) | 1,765,569 | **1,724.0 KB** | 0.0% | **100% تطابق رياضي وبصري تام (Bit-for-Bit)** |
-| **الوضع الرياضي مع Zstd (`-lossless -zstd`)** | 180 (60 FPS) | 1,440,210 | **1,406.4 KB** | **-18.4%** | **ضغط Zstd الثنائي دون أي فقدان رياضي** |
-| **الوضع الذكي القياسي (Quality 0.80)** | 90 (30 FPS) | 728,998 | **711.9 KB** | **-58.7%** | دقة كاملة 1.0x بنقاء بصري إنتاجي ممتاز |
-| **الوضع الذكي مع Zstd (`-zstd`)** | 90 (30 FPS) | 592,886 | **578.9 KB** | **-66.4%** | أعلى توفير للدقة الكاملة 1.0x |
-| **🔥 الوضع فائق الصغر المعتمد (`-compact`)** | 60 (20 FPS) | **89,502** | **87.4 KB** | **-94.8%** | **حجم أقل من 100 KB مع تكبير GPU عتادي** |
-| **⚡ الوضع فائق الصغر مع Zstd (`-compact -zstd`)** | 60 (20 FPS) | **82,353** | **80.4 KB** | **-95.2%** | **الأخف وزناً على الإطلاق للبث السحابي** |
-| **🎯 ميزانية مخصصة (`-target-kb 75`)** | 60 (20 FPS) | **74,764** | **73.0 KB** | **-95.7%** | **حل رياضي لميزانية 75 KB بدقة متناهية** |
+| **الأصل الخام (Bake 60fps)** | 180 (60 FPS) | 1,765,569 | **1,724.19 KiB** | نقطة الأساس | الأصل المرجعي غير المضغوط |
+| **وضع حفظ كامل الإطارات (`-lossless`)** | 180 (60 FPS) | 1,765,569 | **1,724.19 KiB** | 0.0% | حفظ كامل إطارات 60FPS وجودة WebP 1.0 دون تقليص |
+| **وضع الإطارات الكاملة مع Zstd (`-lossless -zstd`)** | 180 (60 FPS) | 1,440,210 | **1,406.46 KiB** | **-18.4%** | **ضغط Zstd الثنائي دون أي فقدان بايت-ببايت** |
+| **الوضع الذكي القياسي (Quality 0.80)** | 90 (30 FPS) | 728,998 | **711.91 KiB** | **-58.7%** | دقة كاملة 1.0x بنقاء بصري إنتاجي ممتاز |
+| **الوضع الذكي مع Zstd (`-zstd`)** | 90 (30 FPS) | 592,886 | **578.99 KiB** | **-66.4%** | أعلى توفير للدقة الكاملة 1.0x عبر الحاوية |
+| **🔥 الوضع فائق الصغر المعتمد (`-compact`)** | 60 (20 FPS) | **89,502** | **87.40 KiB** | **-94.9%** | **حجم أقل من 100 KB مع تكبير GPU عتادي** |
+| **⚡ الوضع فائق الصغر مع Zstd (`-compact -zstd`)** | 60 (20 FPS) | **82,353** | **80.42 KiB** | **-95.3%** | **الأخف وزناً على الإطلاق للبث والتخزين السحابي** |
+| **🎯 ميزانية مخصصة (`-target-kb 75`)** | 60 (20 FPS) | **74,764** | **73.01 KiB** | **-95.8%** | **حل رياضي لميزانية 75 KB بدقة متناهية** |
 
 ---
 
@@ -346,13 +350,14 @@ To eliminate any technical ambiguity, the compression pipeline is strictly divid
   * WebP encoding (Quality 0.55 – 0.85) with alpha channel soft-quantization.
 * **Technical Classification**:
   * This phase is **smart perceptual compression (lossy)** designed to eliminate data imperceptible to the human eye on mobile screens.
-  * **Exception**: Activating **`-lossless`** disables frame resampling (preserves 100% native FPS) and sets WebP quality to 1.0 (Bit-for-Bit Lossless).
+  * **Preserve-FPS & Max-Quality Mode (`-lossless`)**: Activating `-lossless` disables temporal downsampling (preserves 100% native FPS, e.g., 60 FPS = 180 frames for 3s), retains 1.0x native dimensions, disables alpha quantization, and encodes canvas frames at WebP Quality 1.0.
+  * **Engineering Clarification**: Converting Lottie vector Bézier paths into canvas frames is inherently a vector-to-raster transformation. In this pipeline, `-lossless` denotes **zero temporal frame decimation and uncompressed raster frames**, rather than an impossible vector equivalence with the original JSON.
 
 ### Phase 2: Binary Container Compression via Meta Zstandard (100% Bit-for-Bit Lossless)
 * **What happens**:
   * Meta's **Zstandard (FSE/tANS Level 19–22)** algorithm compresses the final compiled PAG container bytes.
 * **Technical Classification**:
-  * This phase is **strictly 100% mathematical lossless**. It alters zero pixels or frames, encoding byte stream entropy to save an additional 8% to 20% wire size for CDN delivery, decompressed in-memory back to the identical PAG file in milliseconds.
+  * This phase is **strictly 100% mathematical lossless** on the compiled binary byte stream. It alters zero pixels or frames, encoding byte stream entropy to save an additional 8% to 20% wire size for CDN delivery, decompressed in-memory back to the bit-for-bit identical PAG file in milliseconds.
 
 ---
 
@@ -360,18 +365,19 @@ To eliminate any technical ambiguity, the compression pipeline is strictly divid
 
 > **Benchmark Context**:
 > Evaluated on the complex fire badge animation `nickname_fire.json` (Native dimensions: 190x88, Duration: 3.00 seconds, 117 interacting layers).
+> *Standardized units: KiB is calculated strictly as bytes / 1024.*
 > *Engineering Note: Final PAG file size depends naturally on animation duration, canvas resolution, and visual entropy. The table below demonstrates mode efficiency on a real-world complex asset.*
 
-| Mode & Flags | FPS & Frames | Bytes | File Size | Reduction vs Raw | Visual & Technical Fidelity |
+| Mode & Flags | FPS & Frames | Bytes | File Size (KiB) | Reduction vs Raw | Visual & Technical Fidelity |
 |---|:---:|:---:|:---:|:---:|:---:|
-| **Raw Uncompressed (Bake 60fps)** | 180 (60 FPS) | 1,765,569 | **1,724.0 KB** | Baseline | Raw Uncompressed Reference |
-| **Strict Lossless Mode (`-lossless`)** | 180 (60 FPS) | 1,765,569 | **1,724.0 KB** | 0.0% | **100% Bit-for-Bit Mathematical Lossless** |
-| **Strict Lossless with Zstd (`-lossless -zstd`)** | 180 (60 FPS) | 1,440,210 | **1,406.4 KB** | **-18.4%** | **Pure Zstd binary compression (0% loss)** |
-| **Default Smart Perceptual (Quality 0.80)** | 90 (30 FPS) | 728,998 | **711.9 KB** | **-58.7%** | Native 1.0x Resolution, Production Sweet Spot |
-| **Smart Mode with Zstd (`-zstd`)** | 90 (30 FPS) | 592,886 | **578.9 KB** | **-66.4%** | Full 1.0x resolution with wire compression |
-| **🔥 Ultra-Compact Mode (`-compact`)** | 60 (20 FPS) | **89,502** | **87.4 KB** | **-94.8%** | **Sub-100KB with GPU bilinear transform** |
-| **⚡ Ultra-Compact with Zstd (`-compact -zstd`)** | 60 (20 FPS) | **82,353** | **80.4 KB** | **-95.2%** | **Lowest wire size for mobile CDNs** |
-| **🎯 Custom Budget Target (`-target-kb 75`)** | 60 (20 FPS) | **74,764** | **73.0 KB** | **-95.7%** | **Dynamic mathematical budget solver** |
+| **Raw Uncompressed (Bake 60fps)** | 180 (60 FPS) | 1,765,569 | **1,724.19 KiB** | Baseline | Raw Uncompressed Reference |
+| **Preserve-FPS Mode (`-lossless`)** | 180 (60 FPS) | 1,765,569 | **1,724.19 KiB** | 0.0% | 100% Native 60 FPS, WebP Quality 1.0, 1.0x Scale |
+| **Preserve-FPS with Zstd (`-lossless -zstd`)** | 180 (60 FPS) | 1,440,210 | **1,406.46 KiB** | **-18.4%** | **Pure Zstd binary compression (0% stream loss)** |
+| **Default Smart Perceptual (Quality 0.80)** | 90 (30 FPS) | 728,998 | **711.91 KiB** | **-58.7%** | Native 1.0x Resolution, Production Sweet Spot |
+| **Smart Mode with Zstd (`-zstd`)** | 90 (30 FPS) | 592,886 | **578.99 KiB** | **-66.4%** | Full 1.0x resolution with wire compression |
+| **🔥 Ultra-Compact Mode (`-compact`)** | 60 (20 FPS) | **89,502** | **87.40 KiB** | **-94.9%** | **Sub-100KB with GPU bilinear transform** |
+| **⚡ Ultra-Compact with Zstd (`-compact -zstd`)** | 60 (20 FPS) | **82,353** | **80.42 KiB** | **-95.3%** | **Lowest wire size for mobile CDNs** |
+| **🎯 Custom Budget Target (`-target-kb 75`)** | 60 (20 FPS) | **74,764** | **73.01 KiB** | **-95.8%** | **Dynamic mathematical budget solver** |
 
 ---
 
@@ -459,7 +465,8 @@ Report the execution status, output file paths, and compression savings achieved
 
 ---
 
-## 📄 License
+## 📄 License & Attribution
 
 This project is open-source and released under the [MIT License](LICENSE).
+For third-party software components and license notices, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
