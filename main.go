@@ -33,7 +33,8 @@ func main() {
 	fpsFlag := flag.Float64("fps", 0, "Target FPS (default: use original or 25/30)")
 	qualityFlag := flag.Float64("quality", 0.80, "WebP quality (0.1 to 1.0, default: 0.80 - optimal balance)")
 	maxFramesFlag := flag.Int("max-frames", 0, "Max frames to convert (0: all)")
-	edgePath := flag.String("edge", `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`, "Path to Microsoft Edge executable")
+	losslessFlag := flag.Bool("lossless", false, "Strict lossless mode (preserves original source FPS and uncompressed frames)")
+	edgePath := flag.String("edge", "", "Path to Microsoft Edge, Chrome, or Chromium executable (auto-detected if empty)")
 	verifyFlag := flag.Bool("verify", false, "Verify output PAG with official libpag.wasm via headless browser")
 	zstdFlag := flag.Bool("zstd", false, "Compress output with Zstandard (Zstd Level 19-22 / FSE ANS) for ultra-compact storage")
 
@@ -49,7 +50,7 @@ func main() {
 
 	// Mode 2: Batch conversion
 	if *batchDir != "" {
-		handleBatch(*batchDir, *fpsFlag, *qualityFlag, *maxFramesFlag, *edgePath, *verifyFlag, *zstdFlag)
+		handleBatch(*batchDir, *fpsFlag, *qualityFlag, *maxFramesFlag, *edgePath, *verifyFlag, *zstdFlag, *losslessFlag)
 		return
 	}
 
@@ -90,6 +91,7 @@ func main() {
 	opts.Quality = float32(*qualityFlag)
 	opts.FPS = float32(targetFPS)
 	opts.MaxFrames = *maxFramesFlag
+	opts.Lossless = *losslessFlag
 	opts.EdgePath = *edgePath
 
 	convertSingleTarget(targetInput, targetOutput, opts, *verifyFlag, *zstdFlag)
@@ -97,9 +99,9 @@ func main() {
 
 func printUsage() {
 	fmt.Println("Usage (Flag Mode):")
-	fmt.Println("  lottie2pag.exe -i <input.json | input.gif | folder/> [-o <output.pag>] [-fps 25] [-quality 0.80] [-zstd] [-verify]")
+	fmt.Println("  lottie2pag.exe -i <input.json | input.gif | folder/> [-o <output.pag>] [-fps 25] [-quality 0.80] [-lossless] [-zstd] [-verify]")
 	fmt.Println("  lottie2pag.exe -inspect <file.pag | file.pag.zst>")
-	fmt.Println("  lottie2pag.exe -batch <input_folder> [-zstd]")
+	fmt.Println("  lottie2pag.exe -batch <input_folder> [-zstd] [-lossless]")
 	fmt.Println("\nUsage (Official Tencent CLI Compatible):")
 	fmt.Println("  lottie2pag.exe <input_file_or_dir> [output.pag] [fps]")
 	fmt.Println("  lottie2pag.exe <sequence_folder> [fps]")
@@ -180,7 +182,7 @@ func convertSingleTarget(inPath, outPath string, opts converter.RenderOptions, v
 	}
 }
 
-func handleBatch(dir string, fps, quality float64, maxFrames int, edgePath string, verify bool, useZstd bool) {
+func handleBatch(dir string, fps, quality float64, maxFrames int, edgePath string, verify bool, useZstd bool, lossless bool) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		fmt.Printf("[-] Failed to read directory: %v\n", err)
@@ -191,6 +193,7 @@ func handleBatch(dir string, fps, quality float64, maxFrames int, edgePath strin
 	opts.Quality = float32(quality)
 	opts.FPS = float32(fps)
 	opts.MaxFrames = maxFrames
+	opts.Lossless = lossless
 	opts.EdgePath = edgePath
 
 	count := 0

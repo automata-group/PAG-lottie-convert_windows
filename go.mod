@@ -1,5 +1,5 @@
 module lottie2pag
 
-go 1.26
+go 1.22
 
-require github.com/klauspost/compress v1.20.1 // indirect
+require github.com/klauspost/compress v1.17.11

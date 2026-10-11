@@ -3,6 +3,7 @@ package converter
 import (
 	"context"
 	"crypto/sha256"
+	_ "embed"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -20,13 +22,17 @@ import (
 	"lottie2pag/pkg/pag"
 )
 
+//go:embed assets/lottie.min.js
+var embeddedLottieJS []byte
+
 // RenderOptions specifies conversion settings.
 type RenderOptions struct {
-	Quality    float32 // 0.1 to 1.0 WebP quality (default 0.90)
+	Quality    float32 // 0.1 to 1.0 WebP quality (default 0.80)
 	FPS        float32 // Target FPS (0 = use Lottie FPS)
 	MaxFrames  int     // Limit frame count (0 = all frames)
-	EdgePath   string  // Path to msedge.exe
-	StaticDir  string  // Path to directory containing lottie.min.js
+	Lossless   bool    // True: retain full original FPS & lossless encoding
+	EdgePath   string  // Custom path to Edge or Chrome (optional; auto-detected if empty)
+	StaticDir  string  // Optional custom directory containing static assets
 	AppVersion string  // Tag 31 app name
 }
 
@@ -36,19 +42,25 @@ func DefaultRenderOptions() RenderOptions {
 		Quality:    0.80, // Calibrated sweet spot for visual excellence and optimal size
 		FPS:        0,    // 0: smart auto (resample >30fps to 30fps)
 		MaxFrames:  0,    // no limit
-		EdgePath:   `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`,
-		StaticDir:  `c:\Users\second fictory\Downloads\Telegram Desktop\ena\pag_player\static`,
+		Lossless:   false,
+		EdgePath:   "", // dynamically discovered
+		StaticDir:  "", // embedded assets used by default
 		AppVersion: "lottie2pag-go",
 	}
 }
 
 // ConvertLottieToPAG converts a Lottie animation into an aggressively optimized production-grade PAG binary.
 func ConvertLottieToPAG(anim *lottie.Animation, opts RenderOptions) ([]byte, error) {
-	if opts.EdgePath == "" {
-		opts.EdgePath = `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`
+	browserPath, err := FindBrowserExecutable(opts.EdgePath)
+	if err != nil {
+		return nil, fmt.Errorf("browser detection error: %w", err)
 	}
+	opts.EdgePath = browserPath
 	opts.StaticDir = ResolveStaticDir(opts.StaticDir)
-	if opts.Quality <= 0 || opts.Quality > 1.0 {
+
+	if opts.Lossless {
+		opts.Quality = 1.0
+	} else if opts.Quality <= 0 || opts.Quality > 1.0 {
 		opts.Quality = 0.80
 	}
 
@@ -63,10 +75,11 @@ func ConvertLottieToPAG(anim *lottie.Animation, opts RenderOptions) ([]byte, err
 	durationSeconds := sourceDurationFrames / float64(sourceFPS)
 
 	// Target FPS calculation:
-	// If explicitly set, respect user choice.
-	// Otherwise, if source is high-FPS (>30fps, e.g. 60fps), resample to 30fps to save >55% size without perceptual quality loss.
 	targetFPS := sourceFPS
-	if opts.FPS > 0 {
+	if opts.Lossless {
+		// Strict Lossless mode: preserve exact source FPS without resampling
+		targetFPS = sourceFPS
+	} else if opts.FPS > 0 {
 		targetFPS = opts.FPS
 	} else if targetFPS > 30.0 {
 		targetFPS = 30.0
@@ -194,10 +207,17 @@ func bakeLottieFrames(anim *lottie.Animation, totalFrames int, fps float32, opts
 
 	mux := http.NewServeMux()
 
-	// Serve lottie.min.js
-	lottieJSPath := filepath.Join(opts.StaticDir, "lottie.min.js")
+	// Serve lottie.min.js (prefer custom directory if provided, otherwise serve embedded bytes)
 	mux.HandleFunc("/lottie.min.js", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, lottieJSPath)
+		w.Header().Set("Content-Type", "application/javascript")
+		if opts.StaticDir != "" {
+			customPath := filepath.Join(opts.StaticDir, "lottie.min.js")
+			if fi, err := os.Stat(customPath); err == nil && !fi.IsDir() {
+				http.ServeFile(w, r, customPath)
+				return
+			}
+		}
+		w.Write(embeddedLottieJS)
 	})
 
 	// Serve Lottie JSON
@@ -356,18 +376,20 @@ func bakeLottieFrames(anim *lottie.Animation, totalFrames int, fps float32, opts
 	go server.Serve(listener)
 	defer server.Close()
 
-	// Launch headless Edge
+	// Launch headless browser (Edge, Chrome, Chromium)
 	cmd := exec.Command(
 		opts.EdgePath,
-		"--headless",
+		"--headless=new",
 		"--disable-gpu",
 		"--mute-audio",
+		"--no-sandbox",
+		"--disable-dev-shm-usage",
 		"--no-first-run",
 		fmt.Sprintf("http://127.0.0.1:%d/index.html", port),
 	)
 
 	if err := cmd.Start(); err != nil {
-		return nil, nil, fmt.Errorf("failed starting headless Edge at %s: %w", opts.EdgePath, err)
+		return nil, nil, fmt.Errorf("failed starting headless browser at %s: %w", opts.EdgePath, err)
 	}
 
 	// Wait with dynamic timeout based on frame count

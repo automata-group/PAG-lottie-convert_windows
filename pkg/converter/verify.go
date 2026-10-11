@@ -28,29 +28,6 @@ type VerificationResult struct {
 	Error     string `json:"error"`
 }
 
-// ResolveStaticDir finds the directory containing libpag and lottie static assets.
-func ResolveStaticDir(customDir string) string {
-	candidates := []string{
-		customDir,
-		filepath.Join(filepath.Dir(os.Args[0]), "..", "static"),
-		filepath.Join(filepath.Dir(os.Args[0]), "static"),
-		`c:\Users\second fictory\Downloads\Telegram Desktop\ena\pag_player\static`,
-		"./static",
-		"../static",
-	}
-
-	for _, dir := range candidates {
-		if dir == "" {
-			continue
-		}
-		wasmPath := filepath.Join(dir, "libpag.wasm")
-		if info, err := os.Stat(wasmPath); err == nil && !info.IsDir() {
-			return dir
-		}
-	}
-	return customDir
-}
-
 // VerifyPAGFile verifies a PAG file using official libpag.wasm inside headless Edge (Pure Go harness).
 func VerifyPAGFile(pagPath string, staticDir string, edgePath string) (*VerificationResult, error) {
 	pagBytes, err := os.ReadFile(pagPath)
@@ -71,19 +48,21 @@ func VerifyPAGData(pagBytes []byte, staticDir string, edgePath string) (*Verific
 		pagBytes = decomp
 	}
 
-	if edgePath == "" {
-		edgePath = `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`
+	browserPath, err := FindBrowserExecutable(edgePath)
+	if err != nil {
+		return nil, fmt.Errorf("headless browser discovery failed: %w", err)
 	}
+	edgePath = browserPath
 	resolvedStatic := ResolveStaticDir(staticDir)
 
 	wasmPath := filepath.Join(resolvedStatic, "libpag.wasm")
 	esmPath := filepath.Join(resolvedStatic, "libpag.esm.js")
 
 	if _, err := os.Stat(wasmPath); err != nil {
-		return nil, fmt.Errorf("libpag.wasm not found in static dir (%s): %w", resolvedStatic, err)
+		return nil, fmt.Errorf("libpag.wasm not found in static directory (%s); to audit with official WASM, place libpag.wasm and libpag.esm.js in ./static", resolvedStatic)
 	}
 	if _, err := os.Stat(esmPath); err != nil {
-		return nil, fmt.Errorf("libpag.esm.js not found in static dir (%s): %w", resolvedStatic, err)
+		return nil, fmt.Errorf("libpag.esm.js not found in static directory (%s); to audit with official WASM, place libpag.wasm and libpag.esm.js in ./static", resolvedStatic)
 	}
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
