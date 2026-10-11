@@ -1,0 +1,45 @@
+# Executables & Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# WebAssembly (WASM) Binaries & Runtimes
+*.wasm
+*wasm*
+
+# Test Files & Test Suites
+*_test.go
+test/
+tests/
+*test*
+test_*
+*_test.*
+*_q*.pag
+
+# Scripts (Python, Shell, PowerShell, Batch)
+*.py
+*.sh
+*.ps1
+*.bat
+*.cmd
+scripts/
+
+# Generated PAG Binaries & Compressed Streams
+*.pag
+*.pag.zst
+*.zst
+*.tmp
+
+# Go Build & Workspace Artifacts
+bin/
+dist/
+vendor/
+
+# OS and Editor Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
