@@ -36,6 +36,7 @@ type RenderOptions struct {
 	Compact    bool    // Preset for ultra-compact animations strictly below 100 KB
 	MaxFrames  int     // Limit frame count (0 = all frames)
 	Lossless   bool    // True: retain full original FPS & lossless encoding
+	Vector     bool    // True: direct native vector export (zero full-canvas rasterization)
 	EdgePath   string  // Custom path to Edge or Chrome (optional; auto-detected if empty)
 	StaticDir  string  // Optional custom directory containing static assets
 	AppVersion string  // Tag 31 app name

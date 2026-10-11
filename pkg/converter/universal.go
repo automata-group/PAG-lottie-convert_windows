@@ -44,7 +44,12 @@ func ConvertAuto(inputPath string, opts RenderOptions) ([]byte, MediaType, error
 		if err != nil {
 			return nil, MediaTypeLottie, fmt.Errorf("failed parsing Lottie JSON: %w", err)
 		}
-		pagBytes, err := ConvertLottieToPAG(anim, opts)
+		var pagBytes []byte
+		if opts.Vector {
+			pagBytes, err = ConvertLottieDirectVector(anim, opts)
+		} else {
+			pagBytes, err = ConvertLottieToPAG(anim, opts)
+		}
 		if err != nil {
 			return nil, MediaTypeLottie, err
 		}

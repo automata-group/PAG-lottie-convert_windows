@@ -40,6 +40,7 @@ func main() {
 	edgePath := flag.String("edge", "", "Path to Microsoft Edge, Chrome, or Chromium executable (auto-detected if empty)")
 	verifyFlag := flag.Bool("verify", false, "Verify output PAG with official libpag.wasm via headless browser")
 	zstdFlag := flag.Bool("zstd", false, "Compress output with Zstandard (Zstd Level 19-22 / FSE ANS) for ultra-compact storage")
+	vectorFlag := flag.Bool("vector", false, "Direct native vector export without rasterizing full-canvas frames")
 
 	flag.Parse()
 
@@ -59,6 +60,7 @@ func main() {
 	opts.Compact = *compactFlag
 	opts.MaxFrames = *maxFramesFlag
 	opts.Lossless = *losslessFlag
+	opts.Vector = *vectorFlag
 	opts.EdgePath = *edgePath
 
 	useZstd := *zstdFlag
