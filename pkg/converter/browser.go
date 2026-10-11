@@ -83,6 +83,8 @@ func ResolveStaticDir(customDir string) string {
 		customDir,
 		"./static",
 		"../static",
+		"../../static",
+		"../../../static",
 		filepath.Join(filepath.Dir(os.Args[0]), "static"),
 		filepath.Join(filepath.Dir(os.Args[0]), "..", "static"),
 	}

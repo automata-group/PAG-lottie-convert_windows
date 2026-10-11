@@ -278,8 +278,19 @@ func bakeLottieFrames(anim *lottie.Animation, totalFrames int, fps float32, expo
 	frameIsDup := make([]bool, totalFrames)
 	receivedCount := 0
 	doneCh := make(chan struct{})
+	errCh := make(chan string, 1)
 
 	mux := http.NewServeMux()
+
+	// Error reporting handler from browser JavaScript
+	mux.HandleFunc("/error", func(w http.ResponseWriter, r *http.Request) {
+		msg := r.URL.Query().Get("msg")
+		select {
+		case errCh <- msg:
+		default:
+		}
+		w.WriteHeader(http.StatusOK)
+	})
 
 	// Serve lottie.min.js (prefer custom directory if provided, otherwise serve embedded bytes)
 	mux.HandleFunc("/lottie.min.js", func(w http.ResponseWriter, r *http.Request) {
@@ -319,20 +330,37 @@ func bakeLottieFrames(anim *lottie.Animation, totalFrames int, fps float32, expo
 <body>
     <div id="anim" style="width:%dpx; height:%dpx;"></div>
     <script>
-    async function start() {
-        const resp = await fetch('/data.json');
-        const animData = await resp.json();
-        const container = document.getElementById('anim');
-        
-        const anim = lottie.loadAnimation({
-            container: container,
-            renderer: 'canvas',
-            loop: false,
-            autoplay: false,
-            animationData: animData
-        });
+    window.onerror = function(msg, url, line) {
+        fetch('/error?msg=' + encodeURIComponent(msg + ' (line ' + line + ')'), { method: 'POST' });
+    };
+    window.onunhandledrejection = function(e) {
+        fetch('/error?msg=' + encodeURIComponent('Unhandled Rejection: ' + (e.reason ? e.reason.message || e.reason : 'unknown')), { method: 'POST' });
+    };
 
-        anim.addEventListener('DOMLoaded', async () => {
+    async function start() {
+        try {
+            const resp = await fetch('/data.json');
+            if (!resp.ok) {
+                fetch('/error?msg=failed_to_fetch_data_json', { method: 'POST' });
+                return;
+            }
+            const animData = await resp.json();
+            const container = document.getElementById('anim');
+            
+            const anim = lottie.loadAnimation({
+                container: container,
+                renderer: 'canvas',
+                loop: false,
+                autoplay: false,
+                animationData: animData
+            });
+
+            anim.addEventListener('data_failed', () => {
+                fetch('/error?msg=lottie_data_failed', { method: 'POST' });
+            });
+
+            anim.addEventListener('DOMLoaded', async () => {
+                try {
             const canvas = container.querySelector('canvas');
             const ctx = canvas.getContext('2d');
             const exportW = %d;
@@ -427,7 +455,13 @@ func bakeLottieFrames(anim *lottie.Animation, totalFrames int, fps float32, expo
             }
 
             await fetch('/done', { method: 'POST' });
-        });
+                } catch (err) {
+                    fetch('/error?msg=' + encodeURIComponent('render_loop_error: ' + (err.message || err)), { method: 'POST' });
+                }
+            });
+        } catch (e) {
+            fetch('/error?msg=' + encodeURIComponent('start_error: ' + (e.message || e)), { method: 'POST' });
+        }
     }
     start();
     </script>
@@ -510,6 +544,9 @@ func bakeLottieFrames(anim *lottie.Animation, totalFrames int, fps float32, expo
 	select {
 	case <-doneCh:
 		// Succeeded!
+	case errMsg := <-errCh:
+		KillProcessTree(cmd)
+		return nil, nil, fmt.Errorf("browser rendering error: %s", errMsg)
 	case <-ctx.Done():
 		KillProcessTree(cmd)
 		return nil, nil, errors.New("timeout waiting for frame baking")
