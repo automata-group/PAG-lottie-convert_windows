@@ -4,10 +4,10 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Language-Go%201.22+-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go Version" />
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Platform" />
-  <img src="https://img.shields.io/badge/Dependency-Zero%20External%20(go:embed)-success?style=for-the-badge" alt="Zero Dependency" />
+  <img src="https://img.shields.io/badge/Architecture-Self--Contained%20(go:embed)-success?style=for-the-badge" alt="Self-Contained" />
+  <img src="https://img.shields.io/badge/Harness-Headless%20Chromium%20(Edge%2FChrome)-orange?style=for-the-badge" alt="Chromium Harness" />
   <img src="https://img.shields.io/badge/Standard-Tencent%20PAG%20v3-red?style=for-the-badge" alt="Format" />
-  <img src="https://img.shields.io/badge/Target-Sub--100KB%20(<100KB)-brightgreen?style=for-the-badge" alt="Sub-100KB" />
-  <img src="https://img.shields.io/badge/Compression-Up%20to%2095.2%25-success?style=for-the-badge" alt="Compression" />
+  <img src="https://img.shields.io/badge/Benchmark-80.4%20KB%20(nickname__fire)-brightgreen?style=for-the-badge" alt="Benchmark" />
   <img src="https://img.shields.io/badge/Meta%20Engine-Zstandard%20(FSE%2FtANS)-purple?style=for-the-badge" alt="Zstandard" />
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License" />
 </p>
@@ -16,27 +16,44 @@
 
 # 📖 المحتوى العربي (دليل التوثيق والتشغيل الشامل)
 
-محرك تحويل برمجي فائق السرعة ومستقل بذاته بالكامل (**Zero-Dependency**)، مبني بلغة **Go 1.22+**، مخصص لتحويل ملفات الرسوم المتحركة **Lottie JSON**، وصور **GIF المتحركة**، و**تسلسلات الصور (Image Sequences)** إلى صيغة **Tencent PAG (Portable Animated Graphics)** الثنائية عالية الكفاءة.
-
-تم تزويد المحرك بنظام حل رياضي متقدم وضغط خوارزمي فائق يضمن وصول الرسوم المتحركة المعقدة إلى **أقل من 100 كيلوبايت (< 100 KB)** بنسبة تخفيض إجمالية تصل إلى **95.2%** مقارنة بالريندر الخام، مدعوماً بمحرك الضغط الفوقي العالمي **Meta Zstandard (FSE/tANS)**، مع توفير وضع فائق الصغر (`-compact`)، وحل رياضي للميزانية (`-target-kb`)، والوضع البصري الذكي للإنتاج، والوضع الرياضي الخالي من أي فقدان (`-lossless`).
+محرك تحويل وهندسة رسوم متحركة مدمج ومبني بلغة **Go 1.22+**، مخصص لتحويل ملفات **Lottie JSON**، وصور **GIF المتحركة**، و**تسلسلات الصور (PNG/WebP/JPG)** إلى صيغة **Tencent PAG (Portable Animated Graphics)** الثنائية عالية الكفاءة والمعتمدة في تطبيقات التواصل الاجتماعي والألعاب.
 
 ---
 
-## 🌟 لماذا تم تطوير هذا المحرك؟ (المشكلة والحل)
+## 🏗️ الشفافية الهندسية وبيئة التشغيل (Runtime Architecture)
 
-1. **الاستغناء الكامل عن بيئات macOS وLinux المعقدة وتوفير بنية مستقلة**:
-   * أداة Tencent الرسمية (`PAGConvertor` و `convert.sh`) كانت تعمل حصرياً على أنظمة macOS وLinux وتتطلب بيئات تشغيل معقدة ومكتبات مفقودة على Windows.
-   * هذا المشروع يقدم أداة تنفيذية أصلية (`lottie2pag.exe`) تبنى وتعمل مباشرة وبسرعة فائقة.
-2. **استقلالية تامة وصفر اعتماديات خارجية (Zero External Dependencies)**:
+لضمان المصداقية التقنية عند استخدام الأداة في بيئات الإنتاج أو كمنتج تجاري، نوضح الآلية الدقيقة للتشغيل:
+
+1. **ملف تنفيذي مدمج الأصول (Self-Contained Executable)**:
    * تم تضمين مكتبة المعالجة `lottie.min.js` مباشرة داخل الملف التنفيذي عبر تقنية **`//go:embed`**.
-   * لا يحتاج المحرك لأي مجلدات أصول خارجية (`static`) أو مسارات محلية ثابتة؛ يعمل فوراً بمجرد فك الضغط أو البناء على أي جهاز جديد!
-   * كشف ديناميكي عابر للمنصات لأي متصفح مبني على كروميوم (Edge, Chrome, Chromium, Brave) من متغيرات النظام `PATH` أو المسارات القياسية.
-3. **حل مشكلة تضخم الحجم (File Size Explosion)**:
-   * أدوات التحويل التقليدية تقوم بحفظ كافة الإطارات بمعدلات عالية (مثل 60FPS) كصور مستقلة وبجودات غير محسوبة، مما يؤدي إلى إنتاج ملفات PAG ضخمة تتجاوز 1.7 ميغابايت وتثقل كاهل تطبيقات الهاتف ومواقع الويب.
-   * تم ابتكار خط أنابيب ضغط خوارزمي متكامل يقلص الحجم من **1,724 كيلوبايت** إلى **711 كيلوبايت** في الطبقة الأصلية، ثم إلى **578 كيلوبايت** باستخدام المحرك الفوقي Zstandard (توفير إجمالي 66.4%).
-4. **التوافق التام 100% مع معايير Tencent الرسمية ووضوح صيغ التخزين**:
-   * صيغة `.pag` المنتجة هي حاوية PAG قياسية أصلية 100% تعمل مباشرة في مشغلات `flutter_pag`، وiOS وAndroid، ومتصفحات الويب عبر `libpag.wasm`.
-   * صيغة `.pag.zst` هي صيغة سحابية فائقة الضغط مخصصة لتقليص حزم التطبيقات والنقل الشبكي، ويتم فك ضغطها لحظياً في الذاكرة.
+   * **لا تحتاج الأداة لتثبيت بيئات تشغيل خارجية مثل Node.js أو حزم npm أو Python**.
+2. **محرك الريندر والاعتمادية على المتصفح (Headless Chromium Harness)**:
+   * **لملفات Lottie JSON**: نظراً لأن مواصفات Lottie تعتمد على تقنيات الريندر المتجهي للويب، تقوم الأداة باستدعاء محرك كروميوم المثبت مسبقاً في النظام (تكتشف تلقائياً متصفح **Microsoft Edge المتوفر افتراضياً في Windows 10/11** أو **Google Chrome** أو **Brave**) في وضع الخفاء (`--headless=new`) لتنفيذ ريندر الـ Canvas وتسريعه عتادياً.
+   * **لملفات GIF وتسلسلات الصور**: يتم فك تشفيرها، وضغط إطاراتها، وتجميع حاوية PAG الثنائية برمجياً بالكامل داخل لغة Go الصافية دون أي استدعاء للمتصفح.
+3. **أداة الفحص والتدقيق الرسمي (`-verify`)**:
+   * خيار اختياري تماماً يستدعي مكتبة `libpag.wasm` الرسمية من Tencent داخل المتصفح الخفي للتحقق من سلامة البايتات وأبعاد الريندر ومطابقة المواصفات الرسمية.
+
+---
+
+## 🔍 التفريق العلمي بين مراحل الضغط (Lossy vs Lossless Pipeline)
+
+لتجنب أي خلط تقني، ينقسم خط أنابيب التحويل والضغط في الأداة إلى مرحلتين متمايزتين بوضوح:
+
+### المرحلة 1: معالجة الإطارات والضغط الإدراكي (Perceptual Frame Processing)
+* **ماذا يحدث هنا؟**:
+  * إعادة التشكيل الزمني لمعدل الإطارات (Temporal Resampling) مثلاً من 60 FPS إلى 30 أو 20 FPS.
+  * التقليص المكاني الرياضي (Spatial Downscaling) للإطارات مع تحميل التكبير على عتاد الـ GPU عبر الترشيح ثنائي الخطي (Bilinear Filtering).
+  * تكميم قناة الشفافية (Alpha Soft-Quantization) وترميز WebP بجودة مدروسة (Quality 0.55 – 0.85).
+* **التوصيف التقني الدقيق**:
+  * هذه المرحلة هي **ضغط بصري/إدراكي ذكي (Perceptually Lossy)**، تهدف إلى إزالة البيانات الزائدة التي تعجز العين البشرية عن ملاحظتها على شاشات الجوال لتحقيق التخفيض الأقصى في الحجم.
+  * **الاستثناء الوحيد**: عند تفعيل خيار **`-lossless`** الصريح، يتم تعطيل خفض الإطارات (الحفاظ على 60 FPS كاملة) وضبط جودة WebP على 1.0 (Bit-for-Bit Lossless) لضمان تطابق رياضي مطلق لكل بيكسل.
+
+### المرحلة 2: ضغط الحاوية الثنائية عبر Zstandard (100% Bit-for-Bit Lossless)
+* **ماذا يحدث هنا؟**:
+  * خوارزمية **Meta Zstandard (FSE/tANS Level 19–22)** تطبق كطبقة ضغط فوقي على بايتات ملف PAG المجمعة والجاهزة في نهاية المعالجة.
+* **التوصيف التقني الدقيق**:
+  * هذا الضغط **خالٍ تماماً من الفقدان رياضياً بنسبة 100% (Bit-for-Bit Lossless)**.
+  * لا يغير أي بيكسل أو إطار في الرسوم، وإنما يعيد تشفير تدفق البايتات بالإنتروبيا الرياضية لتقليص حجم الملف بنسبة إضافية تتراوح بين **8% إلى 20%** لنقله سحابياً وتخزينه في حزم التطبيقات، ثم يُفك ضغطه لحظياً في الذاكرة ليعود ملف PAG الأصلي المطابق تماماً.
 
 ---
 
@@ -82,54 +99,44 @@
   * **الفحص البصري التراكمي**: فحص مصفوفة البيكسلات للإطار ومقارنتها بالإطار السابق؛ في حال تطابق الإطارين، يتم تجاهل كتابة صورة جديدة وتمديد قيمة `duration` للطبقة السابقة داخل الـ `VectorComposition`.
   * **تجميع الأصول ببصمة SHA-256**: فحص بصمة كل صورة متبقية وإعادة استخدام معرف الصورة `ImageID` عبر وسوم `Tag 49 (ImageBytesV3)` بدلاً من تكرار حفظها في الملف الثنائي.
 
-### 5. محرك الضغط الرياضي فائق الصغر للوصول إلى حجم أقل من 100 كيلوبايت (< 100 KB Engine) 💎
-* **المشكلة الكبرى**:
-  الرسوم المتحركة الثقيلة (مثل شارات الأسماء النارية أو الجسيمات المعقدة) تحتوي على مئات الطبقات الحركية والتدرجات، مما يجعل تحويلها بالأسلوب التقليدي ينتج ملفات بحجم 700 إلى 1,700 كيلوبايت، وهو حجم ثقيل جداً لغرف الدردشة وبثوث الهواتف المحمولة. **الهدف الهندسي الصارم: كسر حاجز الـ 100 كيلوبايت والنزول إلى ما دون 80–90 KB دون تشويه بصري!**
-* **الرباعية الرياضية المبتكرة لتحقيق الهدف**:
+### 5. محرك الضغط الرياضي للرسوم الخفيفة والميزانيات المستهدفة (`-compact` و `-target-kb`) 💎
+* **التحدي الهندسي**:
+  الرسوم المتحركة المعقدة (مثل شارات الأسماء النارية أو الجسيمات المتطايرة) تستهلك عادةً ما بين 700 إلى 1,700 كيلوبايت عند ريندرها بمعدلات عالية (60FPS)، وهو حجم ثقيل جداً لغرف الدردشة والتطبيقات التي تستعرض عشرات الشارات في وقت واحد.
+* **الرباعية الرياضية المعتمدة**:
   1. **التقليص المكاني الرياضي مع مضاعفة العرض العتادي للـ GPU (Bilinear Transform Upscaling)**:
-     * يقوم المحرك بحساب عامل قياس مكاني أمثل $s \in [0.45, 0.60]$ ورسم الإطارات بدقة مدروسة (مثلاً $105 \times 48$ بدلاً من $190 \times 88$).
-     * هذا التقليص يقلص عدد البيكسلات الخام بنسبة **$70\%$** ($s^2 \approx 0.30$)!
-     * في نفس الوقت، يحتفظ تكوين الـ `VectorComposition` بالأبعاد الشاشية الكاملة ($190 \times 88$)، ويتم حقن مصفوفة تحويل `SubTag 13 (BuildTransform2D)` بمقياس مضاعف $\text{scaleX} = 1/s, \text{scaleY} = 1/s$.
-     * يقوم معالج الرسوميات (GPU) في الهاتف أو المتصفح بإعادة تكبير الصورة آنياً باستخدام **الترشيح ثنائي الخطي فائق النعومة (Bilinear Filtering)** عتادياً وبصفر استهلاك إضافي للذاكرة!
-  2. **تجريد بيانات الألوان الفائضة نهائياً (WebP ICCP/Metadata Stripping)**:
-     * متصفحات كروميوم وإيدج تقوم صامتاً بحقن ملف تعريف ألوان sRGB ICC Profile (`ICCP`) بحجم **464 بايت في كل إطار WebP منفرد**!
-     * في حركة مدتها 60 إطاراً، يمثل هذا هدراً صامتاً يتجاوز **28 كيلوبايت** من البيانات الميتة.
-     * طورنا مفككاً ثنائياً يقوم بقراءة تدفق WebP RIFF، وحذف كتل `ICCP` و `EXIF` و `XMP`، وتعديل أعلام `VP8X` الثنائية فوراً، مما يوفر أكثر من 28 KB فوراً!
+     * تصدير الإطارات بعامل قياس مدروس $s \in [0.45, 0.60]$ (مثلاً $105 \times 48$ بدلاً من $190 \times 88$) لتقليص مساحة البيكسلات بنسبة تصل إلى **70%**.
+     * حقن مصفوفة تحويل `SubTag 13 (BuildTransform2D)` بمقياس مضاعف $\text{scaleX} = 1/s, \text{scaleY} = 1/s$، ليتولى معالج الرسوميات (GPU) إعادة تكبير الإطار عتادياً بترشيح ثنائي خطي فائق النعومة (`Bilinear Filtering`) وبصفر استهلاك إضافي لذاكرة التخزين.
+  2. **تجريد بيانات الألوان الفائضة نهائياً (WebP Metadata Stripping)**:
+     * مسح كتل `ICCP` (بحجم 464 بايت لكل إطار) و `EXIF` و `XMP` التي يحقنها المتصفح، مما يوفر أكثر من **28 كيلوبايت** من البيانات الميتة في الحركة.
   3. **تكميم إنتروبيا قناة الشفافية وتصفير الحواف (Alpha Soft-Quantization & Fringe Zeroing)**:
-     * تصفير أي بيكسل ذي شفافية هامشية غير مرئية ($A \le 12$) وتصفير قنوات RGB التابعة له بالكامل.
-     * تكميم قناة الشفافية ($A$) إلى 16 مستوى منفصلاً ناعماً بدلاً من 256 مستوى، مما يسحق إنتروبيا كتلة `ALPH` في WebP ويقلص حجمها بنسبة **$73\%$** دون أي اختلاف تدرج تلاحظه العين البشرية.
-  4. **الحل الرياضي التلقائي لميزانية الحجم (Target Budget Solver via `-target-kb`)**:
-     * معادلة رياضية مغلقة تحسب معلمات الضغط تلقائياً للوصول للهدف المحدد بدقة:
+     * تصفير البيكسلات الهامشية ($A \le 12$) وتكميم مستويات الشفافية إلى 16 مستوى منفصلاً ناعماً، مما يقلص حجم كتلة `ALPH` بنسبة تفوق **70%**.
+  4. **الحل الرياضي التلقائي لميزانية الحجم (Target Budget Solver)**:
+     * معادلة رياضية لحساب معلمات الضغط تلقائياً:
        $$s = \sqrt{\frac{B_{\text{images}} / N}{k \cdot (W \times H)}}$$
-     * خيار `-compact` يضبط الهدف تلقائياً تحت 90 KB، ويقلص معدل الإطارات حركياً إلى 20 FPS كافية تماماً لسلاسة الحركة البشرية، مع تفعيل محرك Zstd تلقائياً.
+     * خيار `-compact` مخصص للرسوم الاجتماعية السريعة (يضبط الإطارات على 20 FPS، وعامل القياس على ~0.55، مع تفعيل Zstd تلقائياً).
 
-### 6. التوضيح العلمي الدقيق لأنماط الضغط وحقيقة "عدم فقدان الجودة (Lossless)"
-* **الوضع فائق الصغر (`-compact` أو `-target-kb 100`)**:
-  * يحقق الهدف المنشود بحجم **89 KB (أو 82 KB مع Zstd)** بنسبة تخفيض **95.2%** مقارنة بالريندر الخام وبأعلى كفاءة في الأداء.
-* **الوضع البصري الذكي الافتراضي (Default Perceptual Mode)**:
-  * يضبط معدل الإطارات على 30 FPS وترميز WebP بجودة 0.80 بدقة كاملة 1.0x بحجم 711 KB (أو 578 KB مع Zstd).
-* **الوضع الرياضي الصارم الخالي من الفقدان (`-lossless`)**:
-  * يحافظ على كامل معدل الإطارات الأصلي (60 FPS) وجودة WebP 1.0 (Bit-for-Bit Lossless) بحجم 1,724 KB.
-* **المحرك الفوقي Zstandard (`-zstd`) والتفريق بين `.pag` و `.pag.zst`**:
-  * **ملف `.pag`**: حاوية PAG قياسية 100% تعمل مباشرة في أي مشغل رسمي.
-  * **ملف `.pag.zst`**: صيغة تخزين ونقل سحابي فائقة الصغر تفك ضغطها لحظياً في الذاكرة.
+> **⚠️ تنويه هندسي ومصداقية تجارية**:
+> الحجم النهائي لأي ملف PAG محكوم طبيعياً بمدته الزمنية ($Duration$)، وأبعاده ($W \times H$)، ومقدار التغير الحركي الفريد بين الإطارات.
+> الرسوم المتحركة الطويلة (مثل 10 أو 15 ثانية) أو ذات الدقات الفائقة (1080p) لا يمكن فيزيائياً تقليصها إلى ما دون 100 KB دون فقدان بصري شديد.
+> الأرقام الموضحة أدناه توثق كفاءة الأنماط المختلفة بدقة وموثوقية على عينة قياس مرجعية واقعية معقدة.
 
 ---
 
-## 📊 جدول القياسات والأداء الفعلي (Real-World Benchmarks)
+## 📊 جدول القياسات والأداء الفعلي (Real-World Benchmark)
 
-> تجربة حقيقية على ملف الأنيميشن الناري المعقد `nickname_fire.json` (الأبعاد: 190x88، المدة: 3.00 ثوانٍ، 117 طبقة حركية):
+> **سياق الاختبار المرجعي**:
+> أُجريت الاختبارات على ملف الشارة النارية التفاعلية المعقدة `nickname_fire.json` (الأبعاد الأصلية: 190x88، المدة: 3.00 ثوانٍ، 117 طبقة حركية متداخلة):
 
-| وضع التحويل والضغط | معدل الإطارات | الحجم بالبايت | الحجم بالكيلوبايت | نسبة التخفيض vs الخام | الدقة والتوافق البصري |
+| وضع التحويل والضغط | معدل الإطارات | الحجم بالبايت | الحجم بالكيلوبايت | نسبة التخفيض vs الخام | طبيعة الضغط والتوافق البصري |
 |---|:---:|:---:|:---:|:---:|:---:|
-| **الأصل الخام (Bake 60fps)** | 180 (60 FPS) | 1,765,569 | **1,724.0 KB** | نقطة الأساس | الأصل المرجعي الخام |
-| **الوضع الرياضي الخالي من الفقدان (`-lossless`)** | 180 (60 FPS) | 1,765,569 | **1,724.0 KB** | 0.0% | **100% تطابق رياضي وبصري تام** |
-| **الوضع الرياضي مع محرك Zstd (`-lossless -zstd`)** | 180 (60 FPS) | 1,440,210 | **1,406.4 KB** | **-18.4%** | **100% تطابق رياضي وبصري تام** |
-| **الوضع الذكي القياسي الافتراضي (Quality 0.80)** | 90 (30 FPS) | 728,998 | **711.9 KB** | **-58.7%** | فائقة النقاء (Full 1.0x Resolution) |
-| **الوضع الذكي مع محرك Zstd (`-zstd`)** | 90 (30 FPS) | 592,886 | **578.9 KB** | **-66.4%** | جودة إنتاجية كاملة الأبعاد |
-| **🔥 الوضع فائق الصغر المعتمد (`-compact`)** | 60 (20 FPS) | **89,502** | **87.4 KB** | **-94.8%** | **أقل من 100 KB! نعومة GPU فائقة** |
-| **⚡ الوضع فائق الصغر مع Zstd (`-compact -zstd`)** | 60 (20 FPS) | **82,353** | **80.4 KB** | **-95.2%** | **الأخف وزناً على الإطلاق (< 85 KB)** |
-| **🎯 ميزانية مخصصة حاسمة (`-target-kb 75`)** | 60 (20 FPS) | **74,764** | **73.0 KB** | **-95.7%** | **حل رياضي دقيق لهدف 75 KB** |
+| **الأصل الخام (Bake 60fps)** | 180 (60 FPS) | 1,765,569 | **1,724.0 KB** | نقطة الأساس | الأصل المرجعي غير المضغوط |
+| **الوضع الرياضي الخالي من الفقدان (`-lossless`)** | 180 (60 FPS) | 1,765,569 | **1,724.0 KB** | 0.0% | **100% تطابق رياضي وبصري تام (Bit-for-Bit)** |
+| **الوضع الرياضي مع Zstd (`-lossless -zstd`)** | 180 (60 FPS) | 1,440,210 | **1,406.4 KB** | **-18.4%** | **ضغط Zstd الثنائي دون أي فقدان رياضي** |
+| **الوضع الذكي القياسي (Quality 0.80)** | 90 (30 FPS) | 728,998 | **711.9 KB** | **-58.7%** | دقة كاملة 1.0x بنقاء بصري إنتاجي ممتاز |
+| **الوضع الذكي مع Zstd (`-zstd`)** | 90 (30 FPS) | 592,886 | **578.9 KB** | **-66.4%** | أعلى توفير للدقة الكاملة 1.0x |
+| **🔥 الوضع فائق الصغر المعتمد (`-compact`)** | 60 (20 FPS) | **89,502** | **87.4 KB** | **-94.8%** | **حجم أقل من 100 KB مع تكبير GPU عتادي** |
+| **⚡ الوضع فائق الصغر مع Zstd (`-compact -zstd`)** | 60 (20 FPS) | **82,353** | **80.4 KB** | **-95.2%** | **الأخف وزناً على الإطلاق للبث السحابي** |
+| **🎯 ميزانية مخصصة (`-target-kb 75`)** | 60 (20 FPS) | **74,764** | **73.0 KB** | **-95.7%** | **حل رياضي لميزانية 75 KB بدقة متناهية** |
 
 ---
 
@@ -309,42 +316,62 @@ PAG-lottie-convert_windows/
 
 # 🇬🇧 English Documentation
 
-High-performance, standalone converter for **Lottie JSON**, **Animated GIFs**, and **Image Sequences** to **Tencent PAG (Portable Animated Graphics)** binary animations.
-
-Engineered in **Go 1.22+** with **Zero External Dependencies** (bundled assets via `//go:embed`), equipped with an aggressive mathematical compression engine guaranteed to bring complex animations **strictly below 100 KB (< 100 KB)**, delivering up to **95.2% total file size reduction**. Features a dynamic budget solver (`-target-kb`), GPU bilinear upscaling preset (`-compact`), **Meta's Zstandard (FSE/tANS)** meta-engine, and a strict bit-for-bit lossless mode (`-lossless`).
+High-performance, self-contained animation engineering converter for **Lottie JSON**, **Animated GIFs**, and **Image Sequences (PNG/WebP/JPG)** to **Tencent PAG (Portable Animated Graphics)** binary format.
 
 ---
 
-## 🌟 Key Highlights
+## 🏗️ Architectural Transparency & Runtime Environment
 
-- **Sub-100KB Mathematical Engine (< 100 KB Guaranteed)**:
-  - **GPU Bilinear Transform Upscaling**: Downsamples frames dynamically ($s \approx 0.50$ reduces raw pixel area by 70%), while retaining full canvas size in `VectorComposition` and offloading upscaling to GPU bilinear hardware via SubTag 13 transforms with 0 extra memory.
-  - **WebP Metadata Stripping**: Strips Chromium's 464-byte sRGB ICC profile, EXIF, and XMP chunks from every frame, saving >28 KB of dead weight instantly.
-  - **Alpha Entropy Suppression & Fringe Zeroing**: Soft-quantizes alpha into 16 discrete levels and zeroes transparent fringe pixels ($A \le 12$), shrinking the WebP `ALPH` chunk by **73%**.
-  - **Dynamic Target Budget Solver**: Solves closed-form formula $s = \sqrt{\frac{B/N}{k \cdot (W \times H)}}$ to automatically hit custom size budgets (e.g. `-target-kb 100` or `-target-kb 75`).
-- **Zero External Dependencies (`go:embed`)**: Embedded `lottie.min.js` directly within the compiled binary. No external asset folders (`static`), missing scripts, or hardcoded paths.
-- **Dynamic Cross-Platform Browser Discovery**: Automatically finds any Chromium-based engine (Microsoft Edge, Google Chrome, Chromium, Brave) across Windows, Linux, and macOS without manual path configuration.
-- **Meta Zstandard Engine (FSE / tANS Level 19–22)**: State-of-the-art lossless compression outperforming Deflate/Gzip by 15–20% with decompression speeds >1.5 GB/s.
-- **Strict Mathematical Lossless Mode (`-lossless`)**: Preserves exact native FPS without resampling and sets WebP encoding to quality 1.0 (Bit-for-Bit Lossless).
-- **Clear Separation of Distribution Formats**:
-  - `.pag`: 100% native standard Tencent PAG container, directly compatible with `flutter_pag`, `libpag.so`, and `libpag.wasm`.
-  - `.pag.zst`: Ultra-compact wire/CDN streaming format saving 95.2% bandwidth, decompressed in-memory with Zstd before passing bytes to `PAGFile.load()`.
-- **Official libpag.wasm Audit**: Verify generated files with the official Tencent C++/WASM engine via the `-verify` flag.
+To ensure strict engineering credibility for production environments and commercial products:
+
+1. **Self-Contained Executable (`go:embed`)**:
+   * Bundles `lottie.min.js` directly within the compiled Go binary via `//go:embed`.
+   * **Requires no external Node.js, npm packages, or Python environments**.
+2. **Headless Chromium Harness for Vector Baking**:
+   * **For Lottie JSON**: Because Lottie animations depend on browser vector engines, the tool automatically detects and harnesses the system's pre-installed Chromium browser (**Microsoft Edge on Windows 10/11**, **Google Chrome**, or **Brave**) in headless mode (`--headless=new`) for hardware-accelerated canvas rasterization.
+   * **For GIFs & Image Sequences**: Decoded, compressed, and packaged purely in native Go without invoking any browser.
+3. **Official Validation Harness (`-verify`)**:
+   * An optional verification pass that validates the output binary against Tencent's official C++/WASM engine (`libpag.wasm`) in headless mode.
 
 ---
 
-## 📊 Benchmark Comparison (`nickname_fire.json`)
+## 🔍 Two-Stage Pipeline: Perceptual vs Bit-for-Bit Lossless Compression
 
-| Conversion Mode | Frames | Bytes | File Size | Reduction vs Raw | Visual Fidelity |
+To eliminate any technical ambiguity, the compression pipeline is strictly divided into two distinct phases:
+
+### Phase 1: Rasterization & Perceptual Optimization (Perceptually Lossy)
+* **What happens**:
+  * Temporal frame rate resampling (e.g., downsampling from 60 FPS to 30 or 20 FPS).
+  * Spatial scaling ($s \approx 0.50 - 0.60$) with GPU bilinear hardware upscaling.
+  * WebP encoding (Quality 0.55 – 0.85) with alpha channel soft-quantization.
+* **Technical Classification**:
+  * This phase is **smart perceptual compression (lossy)** designed to eliminate data imperceptible to the human eye on mobile screens.
+  * **Exception**: Activating **`-lossless`** disables frame resampling (preserves 100% native FPS) and sets WebP quality to 1.0 (Bit-for-Bit Lossless).
+
+### Phase 2: Binary Container Compression via Meta Zstandard (100% Bit-for-Bit Lossless)
+* **What happens**:
+  * Meta's **Zstandard (FSE/tANS Level 19–22)** algorithm compresses the final compiled PAG container bytes.
+* **Technical Classification**:
+  * This phase is **strictly 100% mathematical lossless**. It alters zero pixels or frames, encoding byte stream entropy to save an additional 8% to 20% wire size for CDN delivery, decompressed in-memory back to the identical PAG file in milliseconds.
+
+---
+
+## 📊 Real-World Benchmark (`nickname_fire.json`)
+
+> **Benchmark Context**:
+> Evaluated on the complex fire badge animation `nickname_fire.json` (Native dimensions: 190x88, Duration: 3.00 seconds, 117 interacting layers).
+> *Engineering Note: Final PAG file size depends naturally on animation duration, canvas resolution, and visual entropy. The table below demonstrates mode efficiency on a real-world complex asset.*
+
+| Mode & Flags | FPS & Frames | Bytes | File Size | Reduction vs Raw | Visual & Technical Fidelity |
 |---|:---:|:---:|:---:|:---:|:---:|
-| **Raw Uncompressed (Bake 60fps)** | 180 (60 FPS) | 1,765,569 | **1,724.0 KB** | Baseline | Raw Reference |
+| **Raw Uncompressed (Bake 60fps)** | 180 (60 FPS) | 1,765,569 | **1,724.0 KB** | Baseline | Raw Uncompressed Reference |
 | **Strict Lossless Mode (`-lossless`)** | 180 (60 FPS) | 1,765,569 | **1,724.0 KB** | 0.0% | **100% Bit-for-Bit Mathematical Lossless** |
-| **Strict Lossless with Zstd (`-lossless -zstd`)** | 180 (60 FPS) | 1,440,210 | **1,406.4 KB** | **-18.4%** | **100% Bit-for-Bit Mathematical Lossless** |
-| **Default Smart Perceptual (Quality 0.80)** | 90 (30 FPS) | 728,998 | **711.9 KB** | **-58.7%** | Ultra Sharp (Full 1.0x Resolution) |
-| **Smart Mode with Zstd (`-zstd`)** | 90 (30 FPS) | 592,886 | **578.9 KB** | **-66.4%** | High Production Quality |
-| **🔥 Ultra-Compact Mode (`-compact`)** | 60 (20 FPS) | **89,502** | **87.4 KB** | **-94.8%** | **Strictly < 100 KB! Hardware GPU Upscaled** |
-| **⚡ Ultra-Compact with Zstd (`-compact -zstd`)** | 60 (20 FPS) | **82,353** | **80.4 KB** | **-95.2%** | **Lightest Wire Size (< 85 KB)** |
-| **🎯 Custom Budget Target (`-target-kb 75`)** | 60 (20 FPS) | **74,764** | **73.0 KB** | **-95.7%** | **Precise 75 KB Mathematical Budget** |
+| **Strict Lossless with Zstd (`-lossless -zstd`)** | 180 (60 FPS) | 1,440,210 | **1,406.4 KB** | **-18.4%** | **Pure Zstd binary compression (0% loss)** |
+| **Default Smart Perceptual (Quality 0.80)** | 90 (30 FPS) | 728,998 | **711.9 KB** | **-58.7%** | Native 1.0x Resolution, Production Sweet Spot |
+| **Smart Mode with Zstd (`-zstd`)** | 90 (30 FPS) | 592,886 | **578.9 KB** | **-66.4%** | Full 1.0x resolution with wire compression |
+| **🔥 Ultra-Compact Mode (`-compact`)** | 60 (20 FPS) | **89,502** | **87.4 KB** | **-94.8%** | **Sub-100KB with GPU bilinear transform** |
+| **⚡ Ultra-Compact with Zstd (`-compact -zstd`)** | 60 (20 FPS) | **82,353** | **80.4 KB** | **-95.2%** | **Lowest wire size for mobile CDNs** |
+| **🎯 Custom Budget Target (`-target-kb 75`)** | 60 (20 FPS) | **74,764** | **73.0 KB** | **-95.7%** | **Dynamic mathematical budget solver** |
 
 ---
 
