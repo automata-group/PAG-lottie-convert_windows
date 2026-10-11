@@ -399,8 +399,8 @@ func BuildImageLayer(layerID, imageID uint32, layerName string, durationFrames u
 }
 
 
-// BuildShapeLayerWithTime creates SubTag 5 (LayerTag) for a native vector Shape Layer with custom startTime and duration.
-func BuildShapeLayerWithTime(layerID uint32, layerName string, startTime, durationFrames uint64, posX, posY float32, shapeTags [][]byte) ([]byte, error) {
+// BuildShapeLayerWithTransform creates SubTag 5 (LayerTag) for a native vector Shape Layer with custom time and 2D transform (pos & scale).
+func BuildShapeLayerWithTransform(layerID uint32, layerName string, startTime, durationFrames uint64, posX, posY, scaleX, scaleY float32, shapeTags [][]byte) ([]byte, error) {
 	s := NewBitStream()
 	// LayerType = 4 (ShapeLayer)
 	if err := s.WriteByte(LayerTypeShape); err != nil {
@@ -417,7 +417,12 @@ func BuildShapeLayerWithTime(layerID uint32, layerName string, startTime, durati
 	}
 
 	// SubTag 13: Transform
-	transPayload := BuildDefaultTransform(posX, posY)
+	var transPayload []byte
+	if scaleX != 1.0 || scaleY != 1.0 {
+		transPayload = BuildTransform2D(posX, posY, scaleX, scaleY)
+	} else {
+		transPayload = BuildDefaultTransform(posX, posY)
+	}
 	if err := WriteTag(s, TagLayerTransform, transPayload); err != nil {
 		return nil, err
 	}
@@ -433,6 +438,11 @@ func BuildShapeLayerWithTime(layerID uint32, layerName string, startTime, durati
 	}
 
 	return s.Bytes(), nil
+}
+
+// BuildShapeLayerWithTime creates SubTag 5 (LayerTag) for a native vector Shape Layer with custom startTime and duration.
+func BuildShapeLayerWithTime(layerID uint32, layerName string, startTime, durationFrames uint64, posX, posY float32, shapeTags [][]byte) ([]byte, error) {
+	return BuildShapeLayerWithTransform(layerID, layerName, startTime, durationFrames, posX, posY, 1.0, 1.0, shapeTags)
 }
 
 // BuildShapeLayer creates SubTag 5 (LayerTag) for a native vector Shape Layer starting at frame 0.

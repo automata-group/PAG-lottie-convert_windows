@@ -9,6 +9,7 @@ import (
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
+	"math"
 	"strconv"
 	"strings"
 
@@ -74,17 +75,20 @@ func ConvertLottieDirectVector(anim *lottie.Animation, opts RenderOptions) ([]by
 			assetIDToImageID[asset.ID] = nextImageID
 			nextImageID++
 		}
-
-		if err == nil {
-			assetIDToImageID[asset.ID] = nextImageID
-			nextImageID++
-		}
 	}
 
 	// 3. Process Layers into native PAG Layer sub-tags
 	totalDuration := anim.DurationFrames()
 	if totalDuration == 0 {
 		totalDuration = 1
+	}
+
+	// Build ind map for multi-level parent hierarchy resolution
+	indMap := make(map[int]*lottie.Layer, len(anim.Layers))
+	for i := range anim.Layers {
+		if anim.Layers[i].Index > 0 {
+			indMap[anim.Layers[i].Index] = &anim.Layers[i]
+		}
 	}
 
 	var layers [][]byte
@@ -110,7 +114,7 @@ func ConvertLottieDirectVector(anim *lottie.Animation, opts RenderOptions) ([]by
 			duration = totalDuration
 		}
 
-		posX, posY, scaleX, scaleY := parseLottieTransform(lottieLayer.Transform)
+		posX, posY, scaleX, scaleY := resolveLayerWorldTransform(&anim.Layers[i], indMap)
 
 		switch lottieLayer.Type {
 		case 1: // Solid Layer
@@ -138,7 +142,7 @@ func ConvertLottieDirectVector(anim *lottie.Animation, opts RenderOptions) ([]by
 
 		case 4: // Vector Shape Layer
 			shapeElements := parseLottieShapeElements(lottieLayer.Shapes)
-			shapePayload, err := pag.BuildShapeLayerWithTime(layerID, layerName, startTime, duration, posX, posY, shapeElements)
+			shapePayload, err := pag.BuildShapeLayerWithTransform(layerID, layerName, startTime, duration, posX, posY, scaleX, scaleY, shapeElements)
 			if err == nil {
 				layers = append(layers, shapePayload)
 			}
@@ -180,8 +184,53 @@ func decodeAssetBytes(fileStr string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(fileStr)
 }
 
-// parseLottieTransform extracts static translation and scaling from ks object.
-func parseLottieTransform(raw json.RawMessage) (posX, posY, scaleX, scaleY float32) {
+type lottieRawKeyframe struct {
+	S json.RawMessage `json:"s"`
+}
+
+func parseRawVec2(raw json.RawMessage) (x, y float64, ok bool) {
+	if len(raw) == 0 {
+		return 0, 0, false
+	}
+	var flat []float64
+	if err := json.Unmarshal(raw, &flat); err == nil && len(flat) >= 2 {
+		return flat[0], flat[1], true
+	}
+	var kfs []lottieRawKeyframe
+	if err := json.Unmarshal(raw, &kfs); err == nil && len(kfs) > 0 {
+		if err := json.Unmarshal(kfs[0].S, &flat); err == nil && len(flat) >= 2 {
+			return flat[0], flat[1], true
+		}
+	}
+	return 0, 0, false
+}
+
+func parseRawScalar(raw json.RawMessage) (val float64, ok bool) {
+	if len(raw) == 0 {
+		return 0, false
+	}
+	var num float64
+	if err := json.Unmarshal(raw, &num); err == nil {
+		return num, true
+	}
+	var arr []float64
+	if err := json.Unmarshal(raw, &arr); err == nil && len(arr) > 0 {
+		return arr[0], true
+	}
+	var kfs []lottieRawKeyframe
+	if err := json.Unmarshal(raw, &kfs); err == nil && len(kfs) > 0 {
+		if err := json.Unmarshal(kfs[0].S, &num); err == nil {
+			return num, true
+		}
+		if err := json.Unmarshal(kfs[0].S, &arr); err == nil && len(arr) > 0 {
+			return arr[0], true
+		}
+	}
+	return 0, false
+}
+
+// parseLayerTransform extracts static translation, anchor point, scale, and rotation from ks object.
+func parseLayerTransform(raw json.RawMessage) (posX, posY, anchorX, anchorY, scaleX, scaleY, rot float64) {
 	scaleX = 1.0
 	scaleY = 1.0
 	if len(raw) == 0 {
@@ -191,34 +240,136 @@ func parseLottieTransform(raw json.RawMessage) (posX, posY, scaleX, scaleY float
 	var ks struct {
 		P struct {
 			K json.RawMessage `json:"k"`
+			S bool            `json:"s"` // Separated dimensions
+			X struct {
+				K json.RawMessage `json:"k"`
+			} `json:"x"`
+			Y struct {
+				K json.RawMessage `json:"k"`
+			} `json:"y"`
 		} `json:"p"`
+		A struct {
+			K json.RawMessage `json:"k"`
+		} `json:"a"`
 		S struct {
 			K json.RawMessage `json:"k"`
 		} `json:"s"`
+		R struct {
+			K json.RawMessage `json:"k"`
+		} `json:"r"`
+		RZ struct {
+			K json.RawMessage `json:"k"`
+		} `json:"rz"`
 	}
 
 	if err := json.Unmarshal(raw, &ks); err != nil {
 		return
 	}
 
-	// Parse Position
-	if len(ks.P.K) > 0 {
-		var posArr []float64
-		if err := json.Unmarshal(ks.P.K, &posArr); err == nil && len(posArr) >= 2 {
-			posX = float32(posArr[0])
-			posY = float32(posArr[1])
+	// Position
+	if ks.P.S {
+		if xVal, ok := parseRawScalar(ks.P.X.K); ok {
+			posX = xVal
+		}
+		if yVal, ok := parseRawScalar(ks.P.Y.K); ok {
+			posY = yVal
+		}
+	} else {
+		if px, py, ok := parseRawVec2(ks.P.K); ok {
+			posX = px
+			posY = py
 		}
 	}
 
-	// Parse Scale
-	if len(ks.S.K) > 0 {
-		var scaleArr []float64
-		if err := json.Unmarshal(ks.S.K, &scaleArr); err == nil && len(scaleArr) >= 2 {
-			scaleX = float32(scaleArr[0] / 100.0)
-			scaleY = float32(scaleArr[1] / 100.0)
+	// Anchor point
+	if ax, ay, ok := parseRawVec2(ks.A.K); ok {
+		anchorX = ax
+		anchorY = ay
+	}
+
+	// Scale (Lottie scale is in percentages, 100% = 1.0)
+	if sx, sy, ok := parseRawVec2(ks.S.K); ok {
+		scaleX = sx / 100.0
+		scaleY = sy / 100.0
+	}
+
+	// Rotation (degrees)
+	if rVal, ok := parseRawScalar(ks.R.K); ok {
+		rot = rVal
+	} else if rzVal, ok := parseRawScalar(ks.RZ.K); ok {
+		rot = rzVal
+	}
+
+	return
+}
+
+// resolveLayerWorldTransform walks up the parent hierarchy chain to accumulate 2D affine
+// matrix transforms (translation, rotation, scale, anchor point) into exact world coordinates.
+func resolveLayerWorldTransform(l *lottie.Layer, indMap map[int]*lottie.Layer) (worldX, worldY, scaleX, scaleY float32) {
+	var chain []*lottie.Layer
+	curr := l
+	visited := make(map[int]bool)
+	for curr != nil {
+		chain = append(chain, curr)
+		if curr.Index > 0 {
+			visited[curr.Index] = true
+		}
+		if curr.Parent > 0 && !visited[curr.Parent] {
+			curr = indMap[curr.Parent]
+		} else {
+			break
 		}
 	}
 
+	// Reverse chain: Root ancestor -> ... -> Leaf
+	for i, j := 0, len(chain)-1; i < j; i, j = i+1, j-1 {
+		chain[i], chain[j] = chain[j], chain[i]
+	}
+
+	// 2D affine matrix: [a, c, tx; b, d, ty]
+	a, b, c, d := 1.0, 0.0, 0.0, 1.0
+	tx, ty := 0.0, 0.0
+
+	for _, node := range chain {
+		px, py, ax, ay, sx, sy, rot := parseLayerTransform(node.Transform)
+
+		rad := rot * math.Pi / 180.0
+		cosR := math.Cos(rad)
+		sinR := math.Sin(rad)
+
+		la := cosR * sx
+		lb := sinR * sx
+		lc := -sinR * sy
+		ld := cosR * sy
+
+		ltx := px - (la*ax + lc*ay)
+		lty := py - (lb*ax + ld*ay)
+
+		// Affine concatenation: M_world = M_parent * M_local
+		na := a*la + c*lb
+		nb := b*la + d*lb
+		nc := a*lc + c*ld
+		nd := b*lc + d*ld
+		ntx := a*ltx + c*lty + tx
+		nty := b*ltx + d*lty + ty
+
+		a, b, c, d = na, nb, nc, nd
+		tx, ty = ntx, nty
+	}
+
+	worldX = float32(tx)
+	worldY = float32(ty)
+
+	scX := math.Sqrt(a*a + b*b)
+	scY := math.Sqrt(c*c + d*d)
+	if a < 0 {
+		scX = -scX
+	}
+	if d < 0 {
+		scY = -scY
+	}
+	scaleX = float32(scX)
+	scaleY = float32(scY)
 	return
 }
 
